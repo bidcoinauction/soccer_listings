@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Soccer eBay Lister</title>
+  <meta name="description" content="Soccer card inventory showcase + eBay title/description helper." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>⚽ Soccer eBay Lister</h1>
+      <p class="sub">Browse your inventory, filter, and copy clean eBay listing text.</p>
+    </div>
+    <div class="actions">
+      <a class="btn" href="/data/inventory.tsv" target="_blank" rel="noopener">Download TSV</a>
+      <a class="btn" href="/data/ebay_bulk_out.csv" target="_blank" rel="noopener">Download eBay CSV</a>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <label class="label">Search</label>
+      <input id="search" class="input" placeholder="Player, team, set..." />
+
+      <div class="filters">
+        <div>
+          <label class="label">Set</label>
+          <select id="setFilter" class="select"><option value="ALL">All</option></select>
+        </div>
+        <div>
+          <label class="label">Team</label>
+          <select id="teamFilter" class="select"><option value="ALL">All</option></select>
+        </div>
+        <div>
+          <label class="label">League</label>
+          <select id="leagueFilter" class="select"><option value="ALL">All</option></select>
+        </div>
+      </div>
+
+      <div class="toggles">
+        <label class="toggle"><input id="autoOnly" type="checkbox" /> Auto only</label>
+        <label class="toggle"><input id="numberedOnly" type="checkbox" /> Numbered only (/xx)</label>
+      </div>
+
+      <button id="clear" class="btn full">Clear filters</button>
+
+      <div class="hint">
+        Tip: click a card to open details, then copy title/description.
+      </div>
+    </aside>
+
+    <section class="main">
+      <div id="status" class="status">Loading inventory…</div>
+      <div id="grid" class="grid" hidden></div>
+    </section>
+  </main>
+
+  <div id="modalOverlay" class="overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modalTop">
+        <div>
+          <div class="small">Selected</div>
+          <div id="modalTitle" class="modalTitle">—</div>
+        </div>
+        <button id="closeModal" class="btn">Close</button>
+      </div>
+
+      <div class="modalBody">
+        <div class="modalImage">
+          <img id="modalImg" alt="card" />
+        </div>
+
+        <div class="modalInfo">
+          <div id="pills" class="pills"></div>
+
+          <div class="meta">
+            <div><span class="k">Set</span><span id="mSet" class="v">—</span></div>
+            <div><span class="k">Card #</span><span id="mNum" class="v">—</span></div>
+            <div><span class="k">Features</span><span id="mFeat" class="v">—</span></div>
+            <div><span class="k">Season</span><span id="mSeason" class="v">—</span></div>
+            <div><span class="k">Brand</span><span id="mBrand" class="v">—</span></div>
+            <div><span class="k">Condition</span><span id="mCond" class="v">—</span></div>
+          </div>
+
+          <div class="modalActions">
+            <button id="copyTitle" class="primary">Copy eBay Title</button>
+            <button id="copyDesc" class="btn">Copy eBay Description (HTML)</button>
+          </div>
+
+          <div class="small">Card Name: <span id="mCardName" class="dim">—</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden>Copied</div>
+
+  <script src="app.js"></script>
+</body>
+</html>
