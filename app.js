@@ -6,44 +6,62 @@
 */
 
 (() => {
-  const $ = (sel) => document.querySelector(sel);
+  const qs = (sel, root = document) => root.querySelector(sel);
+
+  // Grab element by trying multiple selectors (supports old + new markup)
+  const pick = (...sels) => {
+    for (const s of sels) {
+      const el = qs(s);
+      if (el) return el;
+    }
+    return null;
+  };
 
   const els = {
-    status: $("#statusText"),
-    grid: $("#cardsGrid"),
-    search: $("#searchInput"),
-    set: $("#setSelect"),
-    team: $("#teamSelect"),
-    league: $("#leagueSelect"),
-    autoOnly: $("#autoOnly"),
-    numberedOnly: $("#numberedOnly"),
-    clearBtn: $("#clearBtn"),
+    // status / grid
+    status: pick("#statusText", "#resultCount"),
+    activeFilters: pick("#activeFilters"),
+    grid: pick("#cardsGrid", "#cardGrid"),
+    emptyState: pick("#emptyState"),
 
-    backdrop: $("#modalBackdrop"),
-    closeModalBtn: $("#closeModalBtn"),
+    // filters
+    search: pick("#searchInput"),
+    set: pick("#setSelect", "#setFilter"),
+    team: pick("#teamSelect", "#teamFilter"),
+    league: pick("#leagueSelect", "#leagueFilter"),
+    autoOnly: pick("#autoOnly"),
+    numberedOnly: pick("#numberedOnly"),
+    clearBtn: pick("#clearBtn", "#clearFilters"),
 
-    mTitle: $("#modalTitle"),
-    mSet: $("#mSet"),
-    mCardNo: $("#mCardNo"),
-    mFeatures: $("#mFeatures"),
-    mSeason: $("#mSeason"),
-    mBrand: $("#mBrand"),
-    mCondition: $("#mCondition"),
+    // modal
+    backdrop: pick("#modalBackdrop"),
+    modal: pick("#detailsModal"),
+    closeModalBtn: pick("#closeModalBtn", "#closeModal"),
 
-    mImage: $("#mImage"),
-    openImageBtn: $("#openImageBtn"),
-    copyImageBtn: $("#copyImageBtn"),
+    mTitle: pick("#modalTitle"),
+    mSet: pick("#mSet", "#modalSet"),
+    mCardNo: pick("#mCardNo", "#modalCardNumber"),
+    mFeatures: pick("#mFeatures", "#modalFeatures"),
+    mSeason: pick("#mSeason", "#modalSeason"),
+    mBrand: pick("#mBrand", "#modalBrand"),
+    mCondition: pick("#mCondition", "#modalCondition"),
 
-    mName: $("#mName"),
-    mTitlePreview: $("#mTitlePreview"),
-    mDescPreview: $("#mDescPreview"),
-    mCsvRowPreview: $("#mCsvRowPreview"),
+    mImage: pick("#mImage"),
+    openImageBtn: pick("#openImageBtn"),
+    copyImageBtn: pick("#copyImageBtn"),
 
-    copyTitleBtn: $("#copyTitleBtn"),
-    copyDescBtn: $("#copyDescBtn"),
-    appendEbayBtn: $("#appendEbayBtn"),
+    mName: pick("#mName", "#modalCardName"),
+    mTitlePreview: pick("#mTitlePreview"),
+    mDescPreview: pick("#mDescPreview"),
+    mCsvRowPreview: pick("#mCsvRowPreview"),
 
-    toast: $("#toast"),
+    copyTitleBtn: pick("#copyTitleBtn"),
+    copyDescBtn: pick("#copyDescBtn"),
+    appendEbayBtn: pick("#appendEbayBtn"),
+
+    // toast
+    toast: pick("#toast"),
+    toastText: pick("#toastText"),
   };
 
   /** @type {Array<Record<string,string>>} */
@@ -53,7 +71,6 @@
   /** @type {Record<string,string> | null} */
   let selected = null;
 
-  // eBay template CSV in raw rows (array-of-arrays)
   /** @type {string[][]} */
   let ebayRows = [];
   /** @type {string[]} */
@@ -104,7 +121,11 @@
 
   // ===== TSV =====
   function parseTSV(tsvText) {
-    const lines = tsvText.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter((l) => l.trim() !== "");
+    const lines = tsvText
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .split("\n")
+      .filter((l) => l.trim() !== "");
     if (lines.length < 2) return [];
 
     const headers = lines[0].split("\t").map((h) => h.trim());
@@ -178,8 +199,6 @@
 
     row.push(cur);
     rows.push(row);
-
-    // normalize row lengths later
     return rows;
   }
 
@@ -207,7 +226,6 @@
   }
 
   function buildEbayTitle(row) {
-    // Your inventory's Card Name is already a strong title; clamp to 80.
     const t = inv(row, "Card Name") || "Soccer Card";
     return clampTitle(t);
   }
@@ -238,7 +256,6 @@
     ].filter(([, v]) => safeText(v) !== "");
 
     const li = bullets.map(([k, v]) => `<li><b>${escapeHtml(k)}:</b> ${escapeHtml(v)}</li>`).join("");
-
     const autoLine = isAuto(row) ? `<p><b>Autograph:</b> Yes</p>` : "";
     const numberedLine = isNumbered(row) ? `<p><b>Serial numbered:</b> Yes</p>` : "";
 
@@ -255,52 +272,39 @@
       .join("");
   }
 
-  // ===== File Exchange row builder (matches your ebay_listing.csv header row) =====
+  // ===== File Exchange row builder =====
   function headerIndex(name) {
-    // exact match first
     const idx = ebayHeader.findIndex((h) => (h ?? "").trim() === name);
     if (idx >= 0) return idx;
-
-    // soft match for safety
     const n = (name ?? "").trim().toLowerCase();
     return ebayHeader.findIndex((h) => (h ?? "").trim().toLowerCase() === n);
   }
 
   function deriveSetShort(setFull) {
-    // Example: "2024 Topps Finest MLS" -> "Topps Finest"
     const s = String(setFull || "").trim();
     if (!s) return "";
-    // remove leading year
-    const noYear = s.replace(/^\d{4}\s+/, "").trim(); // "Topps Finest MLS"
-    // remove trailing league words (MLS, EPL, UEFA, etc.) conservatively: drop last token if all caps
+    const noYear = s.replace(/^\d{4}\s+/, "").trim();
     const parts = noYear.split(/\s+/);
     if (parts.length >= 3 && /^[A-Z0-9]{2,}$/.test(parts[parts.length - 1])) parts.pop();
-    // keep first two words usually is set name
     return parts.slice(0, 2).join(" ");
   }
 
   function buildEbayAddRowFromInventory(row) {
-    // Create row aligned to ebayHeader length
     const out = new Array(ebayHeader.length).fill("");
 
-    // Required / common fields based on your existing template header row
-    const colAction = 2; // your file uses "Add" in column 2
-    out[colAction] = "Add";
+    // Your template uses "Add" in column 2 (index 2)
+    out[2] = "Add";
 
-    // Category (your existing rows use 261328)
     const catIdx = headerIndex("*Category");
     if (catIdx >= 0) out[catIdx] = "261328";
 
-    // Title
     const titleIdx = headerIndex("*Title");
     if (titleIdx >= 0) out[titleIdx] = buildEbayTitle(row);
 
-    // PicURL (File Exchange supports pipe separated urls)
     const picIdx = headerIndex("PicURL");
     const img = inv(row, "IMAGE URL");
     if (picIdx >= 0) out[picIdx] = img;
 
-    // Basics
     const playerIdx = headerIndex("C:Player/Athlete");
     if (playerIdx >= 0) out[playerIdx] = inv(row, "Player Name");
 
@@ -311,32 +315,26 @@
     if (leagueIdx >= 0) out[leagueIdx] = inv(row, "League");
 
     const parallelIdx = headerIndex("C:Parallel/Variety");
-    if (parallelIdx >= 0) out[parallelIdx] = inv(row, "Features"); // you already use features like Aqua Refractor
+    if (parallelIdx >= 0) out[parallelIdx] = inv(row, "Features");
 
     const cardNoIdx = headerIndex("C:Card Number");
     if (cardNoIdx >= 0) out[cardNoIdx] = inv(row, "Card Number");
 
-    // ConditionID: your existing file uses 4000 (Near Mint or Better)
     const condIdx = headerIndex("*ConditionID");
     if (condIdx >= 0) out[condIdx] = "4000";
 
-    // Autographed (Yes/No) - your template expects C:Autographed
     const autoIdx = headerIndex("C:Autographed");
     if (autoIdx >= 0) out[autoIdx] = isAuto(row) ? "Yes" : "No";
 
-    // C:Features (optional) - keep blank unless you want duplication
     const featIdx = headerIndex("C:Features");
-    if (featIdx >= 0) out[featIdx] = ""; // keep as-is (your current rows keep blank)
+    if (featIdx >= 0) out[featIdx] = "";
 
-    // Year Manufactured from Card Set (e.g., 2024 Topps...)
     const yearIdx = headerIndex("C:Year Manufactured");
     if (yearIdx >= 0) out[yearIdx] = firstYearFromText(inv(row, "Card Set")) || firstYearFromText(inv(row, "Card Name"));
 
-    // Season format: "2023-24"
     const seasonIdx = headerIndex("C:Season");
     if (seasonIdx >= 0) out[seasonIdx] = normalizeSeason(inv(row, "Season"));
 
-    // Manufacturer and Set
     const manuIdx = headerIndex("C:Manufacturer");
     if (manuIdx >= 0) out[manuIdx] = inv(row, "Brand");
 
@@ -346,11 +344,9 @@
     const cardNameIdx = headerIndex("C:Card Name");
     if (cardNameIdx >= 0) out[cardNameIdx] = inv(row, "Card Name");
 
-    // Sport
     const sportIdx = headerIndex("*C:Sport");
     if (sportIdx >= 0) out[sportIdx] = inv(row, "Sport") || "Soccer";
 
-    // If your template has a Description column, fill it with our HTML
     const descIdx = headerIndex("Description");
     if (descIdx >= 0) out[descIdx] = buildEbayDescriptionHTML(row);
 
@@ -365,9 +361,7 @@
   }
 
   function toCSV(rows) {
-    return rows
-      .map((r) => r.map(csvEscapeCell).join(","))
-      .join("\n");
+    return rows.map((r) => r.map(csvEscapeCell).join(",")).join("\n");
   }
 
   function downloadText(filename, text) {
@@ -410,7 +404,8 @@
       <div class="thumb">
         ${
           img
-            ? `<img src="${escapeHtml(img)}" alt="" loading="lazy" onerror="this.closest('.thumb').innerHTML='<div class=&quot;thumb-fallback&quot;>No image</div>';">`
+            ? `<img src="${escapeHtml(img)}" alt="" loading="lazy"
+                 onerror="this.closest('.thumb').innerHTML='<div class=&quot;thumb-fallback&quot;>No image</div>';">`
             : `<div class="thumb-fallback">No image</div>`
         }
       </div>
@@ -427,8 +422,10 @@
   }
 
   function populateSelect(selectEl, values) {
+    if (!selectEl) return;
     const current = selectEl.value;
-    selectEl.innerHTML = `<option value="">All</option>` + values.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+    selectEl.innerHTML =
+      `<option value="">All</option>` + values.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
     if (values.includes(current)) selectEl.value = current;
   }
 
@@ -436,6 +433,22 @@
     populateSelect(els.set, uniqSorted(inventory.map((r) => inv(r, "Card Set"))));
     populateSelect(els.team, uniqSorted(inventory.map((r) => invTeam(r))));
     populateSelect(els.league, uniqSorted(inventory.map((r) => inv(r, "League"))));
+  }
+
+  function updateActiveFilters() {
+    if (!els.activeFilters) return;
+    const parts = [];
+    if (state.set) parts.push(`Set: ${state.set}`);
+    if (state.team) parts.push(`Team: ${state.team}`);
+    if (state.league) parts.push(`League: ${state.league}`);
+    if (state.autoOnly) parts.push(`Auto only`);
+    if (state.numberedOnly) parts.push(`Numbered only`);
+    if (state.q.trim()) parts.push(`Search: “${safeText(state.q)}”`);
+    els.activeFilters.textContent = parts.length ? parts.join(" • ") : "";
+  }
+
+  function toggleEmptyState(isEmpty) {
+    if (els.emptyState) els.emptyState.hidden = !isEmpty;
   }
 
   function applyFilters() {
@@ -475,18 +488,17 @@
     });
 
     renderGrid();
-    els.status.textContent = `${filtered.length} card${filtered.length === 1 ? "" : "s"} shown`;
+    if (els.status) els.status.textContent = `${filtered.length} card${filtered.length === 1 ? "" : "s"} shown`;
+    updateActiveFilters();
+    toggleEmptyState(filtered.length === 0);
   }
 
   function renderGrid() {
+    if (!els.grid) return;
     els.grid.innerHTML = "";
-    if (!filtered.length) {
-      const empty = document.createElement("div");
-      empty.className = "status";
-      empty.textContent = "No results. Try clearing filters.";
-      els.grid.appendChild(empty);
-      return;
-    }
+
+    if (!filtered.length) return;
+
     const frag = document.createDocumentFragment();
     filtered.forEach((row) => frag.appendChild(renderCard(row)));
     els.grid.appendChild(frag);
@@ -518,12 +530,36 @@
 
   let toastTimer = null;
   function showToast(msg = "Copied") {
-    els.toast.textContent = msg;
+    if (!els.toast) return;
+    if (els.toastText) els.toastText.textContent = msg;
+    else els.toast.textContent = msg;
+
     els.toast.hidden = false;
     window.clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => {
       els.toast.hidden = true;
     }, 1200);
+  }
+
+  // ===== Modal open/close =====
+  let lastFocus = null;
+
+  function setModalOpen(open) {
+    const modal = els.modal;
+    const backdrop = els.backdrop;
+
+    if (backdrop) backdrop.hidden = !open;
+    if (modal) modal.hidden = !open;
+
+    document.body.style.overflow = open ? "hidden" : "";
+
+    if (open) {
+      lastFocus = document.activeElement;
+      (els.closeModalBtn || modal)?.focus?.();
+    } else {
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+      lastFocus = null;
+    }
   }
 
   function openModal(row) {
@@ -541,68 +577,252 @@
     const ebayTitle = buildEbayTitle(row);
     const descHtml = buildEbayDescriptionHTML(row);
 
-    els.mTitle.textContent = name;
-    els.mSet.textContent = set;
-    els.mCardNo.textContent = cardNo;
-    els.mFeatures.textContent = features;
-    els.mSeason.textContent = season;
-    els.mBrand.textContent = brand;
-    els.mCondition.textContent = condition;
+    if (els.mTitle) els.mTitle.textContent = name;
+    if (els.mSet) els.mSet.textContent = set;
+    if (els.mCardNo) els.mCardNo.textContent = cardNo;
+    if (els.mFeatures) els.mFeatures.textContent = features;
+    if (els.mSeason) els.mSeason.textContent = season;
+    if (els.mBrand) els.mBrand.textContent = brand;
+    if (els.mCondition) els.mCondition.textContent = condition;
 
-    els.mName.textContent = name;
-    els.mTitlePreview.textContent = ebayTitle;
-    els.mDescPreview.textContent = descHtml;
+    if (els.mName) els.mName.textContent = name;
+    if (els.mTitlePreview) els.mTitlePreview.textContent = ebayTitle;
 
-    // image
-    els.mImage.src = img || "";
-    els.mImage.alt = name;
-    els.openImageBtn.disabled = !img;
-    els.copyImageBtn.disabled = !img;
+    // Show the HTML string as text (preview), not rendered HTML:
+    if (els.mDescPreview) els.mDescPreview.textContent = descHtml;
+
+    // image (optional in your new drawer)
+    if (els.mImage) {
+      els.mImage.src = img || "";
+      els.mImage.alt = name;
+    }
+    if (els.openImageBtn) els.openImageBtn.disabled = !img;
+    if (els.copyImageBtn) els.copyImageBtn.disabled = !img;
 
     // eBay CSV row preview (human readable)
-    if (ebayHeader.length) {
-      const r = buildEbayAddRowFromInventory(row);
-      const previewPairs = [
-        ["Action(col2)", r[2]],
-        ["*Category", r[headerIndex("*Category")] ?? ""],
-        ["*Title", r[headerIndex("*Title")] ?? ""],
-        ["PicURL", r[headerIndex("PicURL")] ?? ""],
-        ["Player", r[headerIndex("C:Player/Athlete")] ?? ""],
-        ["Team", r[headerIndex("C:Team")] ?? ""],
-        ["League", r[headerIndex("C:League")] ?? ""],
-        ["Parallel/Variety", r[headerIndex("C:Parallel/Variety")] ?? ""],
-        ["Card #", r[headerIndex("C:Card Number")] ?? ""],
-        ["*ConditionID", r[headerIndex("*ConditionID")] ?? ""],
-        ["Autographed", r[headerIndex("C:Autographed")] ?? ""],
-        ["Year Manufactured", r[headerIndex("C:Year Manufactured")] ?? ""],
-        ["Season", r[headerIndex("C:Season")] ?? ""],
-        ["Manufacturer", r[headerIndex("C:Manufacturer")] ?? ""],
-        ["Set", r[headerIndex("C:Set")] ?? ""],
-        ["Card Name", r[headerIndex("C:Card Name")] ?? ""],
-        ["Sport", r[headerIndex("*C:Sport")] ?? ""],
-      ];
-      els.mCsvRowPreview.textContent = previewPairs.map(([k, v]) => `${k}: ${v || ""}`).join("\n");
-    } else {
-      els.mCsvRowPreview.textContent = "eBay template not loaded.";
+    if (els.mCsvRowPreview) {
+      if (ebayHeader.length) {
+        const r = buildEbayAddRowFromInventory(row);
+        const previewPairs = [
+          ["Action(col2)", r[2]],
+          ["*Category", r[headerIndex("*Category")] ?? ""],
+          ["*Title", r[headerIndex("*Title")] ?? ""],
+          ["PicURL", r[headerIndex("PicURL")] ?? ""],
+          ["Player", r[headerIndex("C:Player/Athlete")] ?? ""],
+          ["Team", r[headerIndex("C:Team")] ?? ""],
+          ["League", r[headerIndex("C:League")] ?? ""],
+          ["Parallel/Variety", r[headerIndex("C:Parallel/Variety")] ?? ""],
+          ["Card #", r[headerIndex("C:Card Number")] ?? ""],
+          ["*ConditionID", r[headerIndex("*ConditionID")] ?? ""],
+          ["Autographed", r[headerIndex("C:Autographed")] ?? ""],
+          ["Year Manufactured", r[headerIndex("C:Year Manufactured")] ?? ""],
+          ["Season", r[headerIndex("C:Season")] ?? ""],
+          ["Manufacturer", r[headerIndex("C:Manufacturer")] ?? ""],
+          ["Set", r[headerIndex("C:Set")] ?? ""],
+          ["Card Name", r[headerIndex("C:Card Name")] ?? ""],
+          ["Sport", r[headerIndex("*C:Sport")] ?? ""],
+        ];
+        els.mCsvRowPreview.textContent = previewPairs.map(([k, v]) => `${k}: ${v || ""}`).join("\n");
+      } else {
+        els.mCsvRowPreview.textContent = "eBay template not loaded.";
+      }
     }
 
-    els.backdrop.hidden = false;
-    document.body.style.overflow = "hidden";
-    els.closeModalBtn.focus();
+    setModalOpen(true);
   }
 
   function closeModal() {
     selected = null;
-    els.backdrop.hidden = true;
-    document.body.style.overflow = "";
+    setModalOpen(false);
   }
 
+  // ===== Events =====
   function wireEvents() {
-    els.search.addEventListener("input", (e) => {
-      state.q = e.target.value || "";
-      applyFilters();
+    if (els.search) {
+      els.search.addEventListener("input", (e) => {
+        state.q = e.target.value || "";
+        applyFilters();
+      });
+    }
+
+    if (els.set) {
+      els.set.addEventListener("change", (e) => {
+        state.set = e.target.value || "";
+        applyFilters();
+      });
+    }
+
+    if (els.team) {
+      els.team.addEventListener("change", (e) => {
+        state.team = e.target.value || "";
+        applyFilters();
+      });
+    }
+
+    if (els.league) {
+      els.league.addEventListener("change", (e) => {
+        state.league = e.target.value || "";
+        applyFilters();
+      });
+    }
+
+    if (els.autoOnly) {
+      els.autoOnly.addEventListener("change", (e) => {
+        state.autoOnly = !!e.target.checked;
+        applyFilters();
+      });
+    }
+
+    if (els.numberedOnly) {
+      els.numberedOnly.addEventListener("change", (e) => {
+        state.numberedOnly = !!e.target.checked;
+        applyFilters();
+      });
+    }
+
+    if (els.clearBtn) {
+      els.clearBtn.addEventListener("click", () => {
+        state.q = "";
+        state.set = "";
+        state.team = "";
+        state.league = "";
+        state.autoOnly = false;
+        state.numberedOnly = false;
+
+        if (els.search) els.search.value = "";
+        if (els.set) els.set.value = "";
+        if (els.team) els.team.value = "";
+        if (els.league) els.league.value = "";
+        if (els.autoOnly) els.autoOnly.checked = false;
+        if (els.numberedOnly) els.numberedOnly.checked = false;
+
+        applyFilters();
+      });
+    }
+
+    // modal close
+    if (els.closeModalBtn) els.closeModalBtn.addEventListener("click", closeModal);
+
+    // click backdrop to close
+    if (els.backdrop) {
+      els.backdrop.addEventListener("click", (e) => {
+        // only close if clicking directly on backdrop, not on modal itself
+        if (e.target === els.backdrop) closeModal();
+      });
+    }
+
+    // esc to close
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        const open = (els.backdrop && !els.backdrop.hidden) || (els.modal && !els.modal.hidden);
+        if (open) closeModal();
+      }
     });
 
-    els.set.addEventListener("change", (e) => {
-      state.set
+    // Copy title/desc
+    if (els.copyTitleBtn) {
+      els.copyTitleBtn.addEventListener("click", async () => {
+        if (!selected) return;
+        const ok = await copyToClipboard(buildEbayTitle(selected));
+        showToast(ok ? "Title copied" : "Copy failed");
+      });
+    }
+
+    if (els.copyDescBtn) {
+      els.copyDescBtn.addEventListener("click", async () => {
+        if (!selected) return;
+        const ok = await copyToClipboard(buildEbayDescriptionHTML(selected));
+        showToast(ok ? "Description copied" : "Copy failed");
+      });
+    }
+
+    // Open image in new tab
+    if (els.openImageBtn) {
+      els.openImageBtn.addEventListener("click", () => {
+        if (!selected) return;
+        const img = inv(selected, "IMAGE URL");
+        if (!img) return;
+        window.open(img, "_blank", "noopener,noreferrer");
+      });
+    }
+
+    // Copy image URL
+    if (els.copyImageBtn) {
+      els.copyImageBtn.addEventListener("click", async () => {
+        if (!selected) return;
+        const img = inv(selected, "IMAGE URL");
+        if (!img) return;
+        const ok = await copyToClipboard(img);
+        showToast(ok ? "Image URL copied" : "Copy failed");
+      });
+    }
+
+    // Append eBay row + download updated CSV
+    if (els.appendEbayBtn) {
+      els.appendEbayBtn.addEventListener("click", () => {
+        if (!selected) return;
+        if (!ebayRows.length || !ebayHeader.length) {
+          showToast("eBay CSV not loaded");
+          return;
+        }
+
+        const addRow = buildEbayAddRowFromInventory(selected);
+
+        // Ensure same length as header row
+        const targetLen = ebayHeader.length;
+        while (addRow.length < targetLen) addRow.push("");
+        if (addRow.length > targetLen) addRow.length = targetLen;
+
+        ebayRows.push(addRow);
+
+        const updated = toCSV(ebayRows);
+        downloadText("ebay_listing_UPDATED.csv", updated);
+        showToast("Downloaded updated CSV");
+      });
+    }
+  }
+
+  // ===== Data load =====
+  async function loadAll() {
+    try {
+      if (els.status) els.status.textContent = "Loading inventory…";
+
+      const [tsvRes, csvRes] = await Promise.all([
+        fetch("./full_card_inventory.tsv", { cache: "no-store" }),
+        fetch("./ebay_listing.csv", { cache: "no-store" }),
+      ]);
+
+      if (!tsvRes.ok) throw new Error(`TSV load failed: ${tsvRes.status}`);
+      if (!csvRes.ok) throw new Error(`CSV load failed: ${csvRes.status}`);
+
+      const [tsvText, csvText] = await Promise.all([tsvRes.text(), csvRes.text()]);
+
+      inventory = parseTSV(tsvText);
+
+      ebayRows = parseCSV(csvText);
+
+      // Your File Exchange template often has a preface row,
+      // and the header row is row index 1 (your comment).
+      ebayHeader = (ebayRows[1] || []).map((x) => String(x ?? "").trim());
+
+      syncFilterOptions();
+
+      // initial render
+      filtered = inventory.slice();
+      applyFilters();
+
+      if (els.status) els.status.textContent = `${filtered.length} cards shown`;
+    } catch (err) {
+      console.error(err);
+      if (els.status) els.status.textContent = "Error loading inventory files.";
+      if (els.grid) {
+        els.grid.innerHTML = `<div class="status">Failed to load data. Check that full_card_inventory.tsv and ebay_listing.csv exist at repo root.</div>`;
+      }
+    }
+  }
+
+  // Boot
+  wireEvents();
+  loadAll();
+})();
 
