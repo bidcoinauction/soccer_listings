@@ -1,7 +1,7 @@
-/* Soccer eBay Lister — Inventory UX App
+/* Soccer eBay Lister â€” Inventory UX App
    - Loads ./full_card_inventory.tsv and ./ebay_listing.csv
    - Shows inventory grid with search + filters + selection
-   - Exports eBay File Exchange “Add” rows as CSV
+   - Exports eBay File Exchange â€œAddâ€ rows as CSV
 
    Notes:
    - This is a static frontend app. Run via a local server (not file://) so fetch() works.
@@ -72,6 +72,7 @@
     inventoryNorm: [],
     ebayRows: [],
     ebaySkus: new Set(),
+    ebayTitles: new Set(),
 
     filtered: [],
     selectedSkus: new Set(),
@@ -104,6 +105,28 @@
     out.sort((a, b) => String(a).localeCompare(String(b)));
     return out;
   }
+
+
+  function slugify(s) {
+    return safeStr(s)
+      .toLowerCase()
+      .replace(/['"]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60);
+  }
+
+  function makeSkuFromInventory(raw) {
+    // Inventory TSV has no SKU column. Create a stable SKU from key fields.
+    const season = safeStr(pick(raw, ["Season", "season"]));
+    const player = safeStr(pick(raw, ["Player Name", "Player", "player_name", "Name"]));
+    const cardNo = safeStr(pick(raw, ["Card Number", "Card#", "No", "Number", "#"]));
+    const features = safeStr(pick(raw, ["Features", "Parallel", "Insert", "Variant"]));
+    const set = safeStr(pick(raw, ["Card Set", "Set", "Card Set ", "Set Name", "Product", "Program"]));
+    const base = [season, set, player, cardNo, features].filter(Boolean).join(" ");
+    return slugify(base) || "";
+  }
+
 
   function pick(obj, candidates) {
     // return first matching key in obj (case-insensitive)
@@ -207,40 +230,47 @@
     return { header, out };
   }
 
-  function normalizeCard(raw) {
-    // Heuristic mapping: works even if your columns differ a bit
-    const sku = safeStr(
-      pick(raw, [
-        "Custom label (SKU)", "SKU", "Sku", "custom label", "custom_label",
-        "CardID", "Card Id", "InventoryID", "Inventory Id"
-      ])
-    ) || safeStr(pick(raw, ["id", "ID"])) || "";
+    function normalizeCard(raw) {
+    // Inventory TSV schema (your file): Card Name, Player Name, Sport, Card Number, Features,
+    // IMAGE URL, League, Team, Season, Condition, Brand, Card Set, Quanitity
+    const sku =
+      safeStr(pick(raw, ["Custom label (SKU)", "SKU", "CustomLabel"])) ||
+      makeSkuFromInventory(raw);
 
-    const player = safeStr(pick(raw, ["Player", "player_name", "Name", "Athlete", "Subject"]));
-    const set = safeStr(pick(raw, ["Set", "Product", "Program", "Collection", "Brand", "Set Name"]));
-    const team = safeStr(pick(raw, ["Team", "Club", "team_name"]));
+    const player = safeStr(pick(raw, ["Player Name", "Player", "player_name", "Name", "Athlete", "Subject"]));
+    const set = safeStr(pick(raw, ["Card Set", "Card Set ", "Set", "Product", "Program", "Collection", "Brand", "Set Name"]));
+    const team = safeStr(pick(raw, ["Team", "Team ", "Club", "team_name"]));
     const league = safeStr(pick(raw, ["League", "competition", "League/Competition"]));
-    const year = safeStr(pick(raw, ["Year", "Season", "season", "Release Year"]));
+    const season = safeStr(pick(raw, ["Season", "season"]));
+    const year = safeStr(pick(raw, ["Year", "Release Year"])) || (season ? season.split("-")[0] : "");
     const cardNo = safeStr(pick(raw, ["Card Number", "Card#", "No", "Number", "#"]));
 
-    const parallel = safeStr(pick(raw, ["Parallel", "Parallels", "Variant", "Color", "Refractor"]));
+    const features = safeStr(pick(raw, ["Features"]));
+    const parallel = safeStr(pick(raw, ["Parallel", "Parallels", "Variant", "Color", "Refractor"])) || features;
     const insert = safeStr(pick(raw, ["Insert", "Insert Set", "Subset"]));
-    const auto = safeStr(pick(raw, ["Autograph", "Auto", "Signature"]));
-    const serial = safeStr(pick(raw, ["Serial", "Serial Number", "SN", "Print Run", "Numbered"]));
 
-    const condition = safeStr(pick(raw, ["Condition", "Condition ID", "Grade", "Grading", "Raw/Graded"]));
+    const condition = safeStr(pick(raw, ["Condition", "Condition ID", "Grade", "Grading", "Raw/Graded"])) || "New";
     const price = toNumber(pick(raw, ["Price", "List Price", "Your Price", "Asking", "Value"]));
-    const qty = toNumber(pick(raw, ["Quantity", "Qty", "Count"])) ?? 1;
+    const qty = toNumber(pick(raw, ["Quantity", "Qty", "Count", "Quanitity", "Quanitity "])) ?? 1;
 
     const imageUrl = safeStr(
       pick(raw, [
-        "Item photo URL", "Image", "Image URL", "ImageURL", "Photo", "Photo URL",
-        "Front Image", "Front", "img", "thumbnail"
+        "IMAGE URL",
+        "Image",
+        "Image URL",
+        "ImageURL",
+        "Photo",
+        "Photo URL",
+        "Item photo URL",
+        "Front Image",
+        "Front",
+        "img",
+        "thumbnail",
       ])
     );
 
-    const titleHint = [
-      year, set, player, insert || parallel, cardNo ? `#${cardNo}` : "", serial
+    const titleHint = safeStr(pick(raw, ["Card Name"])) || [
+      year, set, player, insert || parallel, cardNo ? `#${cardNo}` : ""
     ].filter(Boolean).join(" ");
 
     return {
@@ -250,11 +280,11 @@
       team,
       league,
       year,
+      season,
       cardNo,
       parallel,
       insert,
-      auto,
-      serial,
+      features,
       condition,
       price,
       qty,
@@ -265,25 +295,29 @@
   }
 
   function buildDisplayTitle(c) {
+    // Prefer the inventory-provided Card Name (titleHint) when available
+    if (c.titleHint) return String(c.titleHint).trim() || "Card";
     const chunks = [];
     if (c.year) chunks.push(c.year);
     if (c.set) chunks.push(c.set);
     if (c.player) chunks.push(c.player);
-    const detail = [c.insert, c.parallel].filter(Boolean).join(" • ");
+    const detail = [c.insert, c.parallel].filter(Boolean).join(" â€¢ ");
     if (detail) chunks.push(detail);
     if (c.cardNo) chunks.push(`#${c.cardNo}`);
-    if (c.serial) chunks.push(c.serial);
-    return chunks.join(" — ").trim() || "Card";
+    return chunks.join(" â€” ").trim() || "Card";
   }
 
   function buildSublineLeft(c) {
-    const left = [c.team, c.league].filter(Boolean).join(" • ");
-    return left || (c.set ? c.set : "—");
+    const left = [c.team, c.league].filter(Boolean).join(" â€¢ ");
+    return left || (c.set ? c.set : "â€”");
   }
 
-  function isListedBySku(sku) {
-    if (!sku) return false;
-    return state.ebaySkus.has(String(sku).trim());
+  function isListedBySku(sku, cardTitle = "") {
+    // Prefer SKU match (if your eBay CSV uses CustomLabel). Otherwise fallback to title match.
+    if (sku && state.ebaySkus.has(String(sku).trim())) return true;
+    const t = safeStr(cardTitle).toLowerCase();
+    if (t && state.ebayTitles.has(t)) return true;
+    return false;
   }
 
   function cardMatchesSearch(c, q) {
@@ -316,14 +350,14 @@
     els.modalImg.src = card.imageUrl || "";
     els.modalImg.alt = buildDisplayTitle(card);
 
-    els.modalSku.textContent = card.sku || "—";
-    els.modalPlayer.textContent = card.player || "—";
-    els.modalSet.textContent = card.set || "—";
-    els.modalYear.textContent = card.year || "—";
-    els.modalTeam.textContent = [card.team, card.league].filter(Boolean).join(" • ") || "—";
-    els.modalParallel.textContent = [card.insert, card.parallel, card.auto, card.serial].filter(Boolean).join(" • ") || "—";
-    els.modalCondition.textContent = card.condition || "—";
-    els.modalPrice.textContent = (card.price != null ? `$${card.price}` : "—");
+    els.modalSku.textContent = card.sku || "â€”";
+    els.modalPlayer.textContent = card.player || "â€”";
+    els.modalSet.textContent = card.set || "â€”";
+    els.modalYear.textContent = card.year || "â€”";
+    els.modalTeam.textContent = [card.team, card.league].filter(Boolean).join(" â€¢ ") || "â€”";
+    els.modalParallel.textContent = [card.insert, card.parallel, card.auto, card.serial].filter(Boolean).join(" â€¢ ") || "â€”";
+    els.modalCondition.textContent = card.condition || "â€”";
+    els.modalPrice.textContent = (card.price != null ? `$${card.price}` : "â€”");
 
     els.modalRaw.textContent = JSON.stringify(card.raw, null, 2);
 
@@ -385,7 +419,7 @@
       if (f.league && c.league !== f.league) continue;
       if (f.year && c.year !== f.year) continue;
 
-      const listed = isListedBySku(c.sku);
+      const listed = isListedBySku(c.sku, buildDisplayTitle(c));
       if (f.status === "listed" && !listed) continue;
       if (f.status === "unlisted" && listed) continue;
 
@@ -436,7 +470,7 @@
     const frag = document.createDocumentFragment();
 
     for (const c of cards) {
-      const listed = isListedBySku(c.sku);
+      const listed = isListedBySku(c.sku, buildDisplayTitle(c));
       const selected = c.sku && state.selectedSkus.has(c.sku);
 
       const el = document.createElement("article");
@@ -445,7 +479,7 @@
 
       const title = buildDisplayTitle(c);
       const subLeft = buildSublineLeft(c);
-      const priceStr = c.price != null ? `$${c.price}` : "—";
+      const priceStr = c.price != null ? `$${c.price}` : "â€”";
 
       el.innerHTML = `
         <div class="thumb">
@@ -461,7 +495,7 @@
         <div class="cardBody">
           <div class="titleLine">${escapeHtml(title)}</div>
           <div class="subLine">
-            <div class="subLeft">${escapeHtml(subLeft || "—")}</div>
+            <div class="subLeft">${escapeHtml(subLeft || "â€”")}</div>
             <div class="subRight">${escapeHtml(priceStr)}</div>
           </div>
         </div>
@@ -483,8 +517,8 @@
 
   // ---------- eBay export ----------
   function buildEbayAddRowFromCard(c) {
-    // We will produce a conservative “Add” row aligned to common eBay File Exchange headers.
-    // If your ebay_listing.csv has a different header set, we’ll map into it when exporting.
+    // We will produce a conservative â€œAddâ€ row aligned to common eBay File Exchange headers.
+    // If your ebay_listing.csv has a different header set, weâ€™ll map into it when exporting.
 
     const title = buildDisplayTitle(c).slice(0, 80); // keep a safe-ish title length
     const description = [
@@ -501,6 +535,7 @@
     ].filter(Boolean).join("<br>");
 
     return {
+      // Generic headers (some templates use these)
       "Action": "Add",
       "Custom label (SKU)": c.sku || "",
       "Title": title,
@@ -508,7 +543,24 @@
       "Quantity": String(c.qty ?? 1),
       "Item photo URL": c.imageUrl || "",
       "Description": description || "",
-      // Leave other fields blank to avoid wrong category/condition IDs etc.
+
+      // eBay fx_category_template_EBAY_US headers (your ebay_listing.csv)
+      "*Action(SiteID=US|Country=US|Currency=USD|Version=1193|CC=UTF-8)": "Add",
+      "CustomLabel": c.sku || "",
+      "*Category": "261328",
+      "*Title": title,
+      "PicURL": c.imageUrl || "",
+      "C:Player/Athlete": c.player || "",
+      "C:Team": c.team || "",
+      "C:League": c.league || "",
+      "C:Parallel/Variety": c.parallel || c.features || "",
+      "C:Card Number": c.cardNo || "",
+      "*ConditionID": "4000",
+      "C:Features": c.features || "",
+      "C:Year Manufactured": c.year || "",
+      "C:Season": c.season || "",
+      "C:Set": c.set || "",
+      "C:Card Name": title,
     };
   }
 
@@ -561,13 +613,13 @@
   // ---------- Load data ----------
   async function loadText(url) {
     const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error(`${url} → ${res.status}`);
+    if (!res.ok) throw new Error(`${url} â†’ ${res.status}`);
     return await res.text();
   }
 
   async function boot() {
     try {
-      setStatus("Loading inventory + eBay listings…");
+      setStatus("Loading inventory + eBay listingsâ€¦");
 
       const [tsvText, csvText] = await Promise.all([
         loadText(FILES.inventory),
@@ -579,21 +631,38 @@
       state.inventoryRaw = inv.out;
       state.inventoryNorm = inv.out.map(normalizeCard);
 
-      // Parse ebay CSV
-      const csvRows = parseCSV(csvText);
+      // Parse ebay CSV (your file may have HTML appended after the CSV section)
+      const lines = csvText.split(/\r?\n/);
+      const csvOnly = takeWhileLines(lines, (l) => {
+        const t = l.trimStart();
+        return !(t.startsWith("<") || t.startsWith("<!--"));
+      }).join("\n");
+
+      const csvRows = parseCSV(csvOnly);
       const ebay = rowsToObjects(csvRows);
       state.ebayRows = ebay;
 
-      // Build SKU set from ebay csv (robust key detection)
+      // Build SKU + Title sets from ebay csv.
+      // Your template uses "CustomLabel" (and sometimes leaves it blank),
+      // so we also index titles to detect "listed" status.
       const skus = new Set();
+      const titles = new Set();
+
       for (const row of ebay.out) {
         const sku = safeStr(pick(row, ["Custom label (SKU)", "SKU", "Custom label", "CustomLabel"]));
         if (sku) skus.add(sku);
+
+        const title =
+          safeStr(pick(row, ["*Title", "Title", "StoreCategory"])) ||
+          ""; // (some exports shift title into StoreCategory)
+        if (title) titles.add(title.toLowerCase());
       }
+
       state.ebaySkus = skus;
+      state.ebayTitles = titles;
 
       // Subtitle
-      els.subTitle.textContent = `${state.inventoryNorm.length} cards • ${state.ebaySkus.size} listed (by SKU)`;
+      els.subTitle.textContent = `${state.inventoryNorm.length} cards â€¢ ${state.ebaySkus.size} SKU matches â€¢ ${state.ebayTitles.size} title matches`;
 
       // Filters
       refreshFilterOptions(state.inventoryNorm);
@@ -700,7 +769,7 @@
 
     // Resize behavior
     window.addEventListener("resize", () => {
-      // if desktop, ensure sidebar/backdrop aren’t in mobile state
+      // if desktop, ensure sidebar/backdrop arenâ€™t in mobile state
       const isMobile = window.matchMedia("(max-width: 900px)").matches;
       if (!isMobile) {
         els.sidebar.classList.remove("open");
@@ -708,6 +777,15 @@
         document.body.style.overflow = "";
       }
     });
+  }
+
+  function takeWhileLines(lines, predicate) {
+    const out = [];
+    for (const l of lines) {
+      if (!predicate(l)) break;
+      out.push(l);
+    }
+    return out;
   }
 
   function debounce(fn, ms) {
