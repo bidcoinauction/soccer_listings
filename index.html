@@ -2,180 +2,247 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Soccer eBay Lister</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Soccer Card Inventory</title>
   <link rel="stylesheet" href="./styles.css" />
+  <meta name="color-scheme" content="dark light">
 </head>
+
 <body>
-  <header class="app-header">
-    <div class="container header-inner">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">⚽</div>
-        <div class="brand-text">
-          <h1 class="title">Soccer eBay Lister</h1>
-          <p class="subtitle">Browse your inventory, filter, and copy clean eBay listing text.</p>
-        </div>
+  <!-- Top App Bar -->
+  <header class="topbar">
+    <button class="iconbtn" id="sidebarToggle" aria-label="Toggle filters">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+
+    <div class="brand">
+      <div class="brandMark">⚽</div>
+      <div class="brandText">
+        <div class="brandTitle">Card Inventory</div>
+        <div class="brandSub" id="subTitle">Loading…</div>
+      </div>
+    </div>
+
+    <div class="topbarRight">
+      <div class="searchWrap">
+        <svg class="searchIcon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Zm6.1-1.4 3.3 3.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="searchInput" class="searchInput" type="search" placeholder="Search player, team, set, year, parallel…" autocomplete="off"/>
+        <button class="ghostbtn" id="clearSearch" title="Clear">Clear</button>
       </div>
 
-      <div class="header-actions">
-        <a class="btn btn-secondary" href="./full_card_inventory.tsv" download>Download TSV</a>
-        <a class="btn btn-secondary" href="./ebay_listing.csv" download>Download eBay CSV</a>
+      <div class="actions">
+        <button class="btn" id="exportSelectedBtn" disabled>
+          Export Selected
+        </button>
+        <button class="btn btnSecondary" id="exportAllBtn">
+          Export Filtered
+        </button>
       </div>
     </div>
   </header>
 
-  <main class="app-main">
-    <section class="container">
+  <!-- Layout -->
+  <div class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebarHeader">
+        <div class="sidebarTitle">Filters</div>
+        <button class="iconbtn" id="sidebarClose" aria-label="Close filters">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div class="sidebarBody">
+        <div class="field">
+          <label class="label">Set</label>
+          <select id="setSelect" class="select">
+            <option value="">All</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="label">Team</label>
+          <select id="teamSelect" class="select">
+            <option value="">All</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="label">League</label>
+          <select id="leagueSelect" class="select">
+            <option value="">All</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="label">Year</label>
+          <select id="yearSelect" class="select">
+            <option value="">All</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="label">Status</label>
+          <select id="statusSelect" class="select">
+            <option value="">All</option>
+            <option value="unlisted">Unlisted</option>
+            <option value="listed">Listed</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label class="label">Min Price</label>
+          <input id="minPrice" class="input" type="number" inputmode="decimal" placeholder="e.g. 10"/>
+        </div>
+
+        <div class="field">
+          <label class="label">Max Price</label>
+          <input id="maxPrice" class="input" type="number" inputmode="decimal" placeholder="e.g. 200"/>
+        </div>
+
+        <div class="field row">
+          <label class="check">
+            <input id="hideNoImage" type="checkbox" />
+            <span>Hide cards with no image</span>
+          </label>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="field">
+          <label class="label">Sort</label>
+          <select id="sortSelect" class="select">
+            <option value="recent">Default</option>
+            <option value="player">Player A→Z</option>
+            <option value="year_desc">Year (new→old)</option>
+            <option value="year_asc">Year (old→new)</option>
+            <option value="price_desc">Price (high→low)</option>
+            <option value="price_asc">Price (low→high)</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <button class="btn btnSecondary full" id="resetFiltersBtn">Reset Filters</button>
+        </div>
+
+        <div class="helper">
+          <div class="helperTitle">Tip</div>
+          <div class="helperText">
+            Click a card to open details. Use <b>Export</b> to generate an eBay File Exchange “Add” CSV.
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
       <div class="toolbar">
-        <div class="toolbar-row">
-          <label class="field field-search">
-            <span class="field-label">Search</span>
-            <div class="field-control">
-              <input id="searchInput" type="search" placeholder="Player, team, set, card #, season…" autocomplete="off" />
-              <button class="icon-btn icon-btn-sm" id="clearSearch" type="button" aria-label="Clear search" title="Clear">✕</button>
-            </div>
-          </label>
-
-          <label class="field">
-            <span class="field-label">Set</span>
-            <select id="setFilter">
-              <option value="">All</option>
-            </select>
-          </label>
-
-          <label class="field">
-            <span class="field-label">Team</span>
-            <select id="teamFilter">
-              <option value="">All</option>
-            </select>
-          </label>
-
-          <label class="field">
-            <span class="field-label">League</span>
-            <select id="leagueFilter">
-              <option value="">All</option>
-            </select>
-          </label>
+        <div class="kpis">
+          <div class="pill" id="kpiTotal">Total: —</div>
+          <div class="pill" id="kpiShown">Shown: —</div>
+          <div class="pill" id="kpiSelected">Selected: 0</div>
         </div>
 
-        <div class="toolbar-row toolbar-row-secondary">
-          <label class="pill-check">
-            <input id="autoOnly" type="checkbox" />
-            <span>Auto only</span>
-          </label>
-
-          <label class="pill-check">
-            <input id="numberedOnly" type="checkbox" />
-            <span>Numbered only (/xx)</span>
-          </label>
-
-          <button class="btn btn-ghost" id="clearFilters" type="button">Clear filters</button>
-
-          <div class="toolbar-spacer"></div>
-
-          <p class="tip">Tip: click a card to open details, then copy title/description.</p>
+        <div class="viewControls">
+          <button class="chip" id="selectAllShown">Select shown</button>
+          <button class="chip" id="clearSelected">Clear selection</button>
         </div>
       </div>
 
-      <div class="status-row">
-        <div class="status-pill" id="resultCount" aria-live="polite">Loading…</div>
-        <div class="status-muted" id="activeFilters" aria-live="polite"></div>
+      <section class="grid" id="cardsGrid" aria-live="polite"></section>
+
+      <div class="empty" id="emptyState" hidden>
+        <div class="emptyTitle">No cards match your filters</div>
+        <div class="emptyText">Try clearing filters or changing your search.</div>
       </div>
-
-      <section class="grid" id="cardGrid" aria-label="Inventory results"></section>
-
-      <div class="empty-state" id="emptyState" hidden>
-        <div class="empty-icon" aria-hidden="true">🗂️</div>
-        <h2>No matches</h2>
-        <p>Try a different search term or clear filters.</p>
-        <button class="btn btn-secondary" id="emptyClear" type="button">Clear filters</button>
-      </div>
-    </section>
-  </main>
-
-  <!-- Backdrop + Drawer -->
-  <div class="modal-backdrop" id="modalBackdrop" hidden></div>
-
-  <aside class="modal" id="detailsModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>
-    <div class="modal-header">
-      <div class="modal-header-text">
-        <div class="modal-kicker">Selected card</div>
-        <h2 class="modal-title" id="modalTitle">—</h2>
-      </div>
-      <button class="icon-btn" id="closeModal" type="button" aria-label="Close">✕</button>
-    </div>
-
-    <div class="modal-body">
-      <div class="modal-image-wrap">
-        <img id="mImage" class="modal-image" alt="" />
-        <div class="modal-image-actions">
-          <button class="btn btn-secondary" id="openImageBtn" type="button">Open image</button>
-          <button class="btn btn-secondary" id="copyImageBtn" type="button">Copy image URL</button>
-        </div>
-      </div>
-
-      <div class="meta-block">
-        <div class="meta-grid">
-          <div class="meta-item"><div class="meta-label">Player</div><div class="meta-value" id="mPlayer">—</div></div>
-          <div class="meta-item"><div class="meta-label">Card Number</div><div class="meta-value" id="modalCardNumber">—</div></div>
-          <div class="meta-item"><div class="meta-label">Team</div><div class="meta-value" id="mTeam">—</div></div>
-          <div class="meta-item"><div class="meta-label">Set</div><div class="meta-value" id="modalSet">—</div></div>
-          <div class="meta-item"><div class="meta-label">Manufacturer</div><div class="meta-value" id="modalBrand">—</div></div>
-          <div class="meta-item"><div class="meta-label">Season</div><div class="meta-value" id="modalSeason">—</div></div>
-          <div class="meta-item"><div class="meta-label">League</div><div class="meta-value" id="mLeague">—</div></div>
-          <div class="meta-item"><div class="meta-label">Features</div><div class="meta-value" id="modalFeatures">—</div></div>
-          <div class="meta-item"><div class="meta-label">Condition</div><div class="meta-value" id="modalCondition">—</div></div>
-        </div>
-      </div>
-
-      <div class="modal-actions">
-        <button class="btn btn-primary" id="copyTitleBtn" type="button">Copy eBay Title</button>
-        <button class="btn btn-primary" id="copyDescBtn" type="button">Copy eBay Description (HTML)</button>
-        <button class="btn btn-ghost" id="appendEbayBtn" type="button">Append + Download updated CSV</button>
-      </div>
-
-      <div class="divider"></div>
-
-      <div class="preview-block">
-        <div class="preview-label">Title preview</div>
-        <div class="preview-box" id="mTitlePreview">—</div>
-
-        <div class="preview-label">Description preview (HTML string)</div>
-        <pre class="preview-pre" id="mDescPreview">—</pre>
-
-        <div class="preview-label">CSV row preview</div>
-        <pre class="preview-pre" id="mCsvRowPreview">—</pre>
-      </div>
-    </div>
-  </aside>
-
-  <div class="toast" id="toast" hidden>
-    <span class="toast-dot" aria-hidden="true"></span>
-    <span id="toastText">Copied</span>
+    </main>
   </div>
 
+  <!-- Backdrop for mobile sidebar -->
+  <div class="backdrop" id="backdrop" hidden></div>
+
+  <!-- Modal -->
+  <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-label="Card details">
+    <div class="modalCard">
+      <div class="modalHeader">
+        <div class="modalTitle" id="modalTitle">Card</div>
+        <button class="iconbtn" id="modalClose" aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div class="modalBody">
+        <div class="modalMedia">
+          <img id="modalImg" alt="" loading="lazy" />
+        </div>
+
+        <div class="modalInfo">
+          <div class="metaRow">
+            <div class="metaLabel">SKU</div>
+            <div class="metaValue" id="modalSku">—</div>
+          </div>
+          <div class="metaRow">
+            <div class="metaLabel">Player</div>
+            <div class="metaValue" id="modalPlayer">—</div>
+          </div>
+          <div class="metaRow">
+            <div class="metaLabel">Set</div>
+            <div class="metaValue" id="modalSet">—</div>
+          </div>
+          <div class="metaRow">
+            <div class="metaLabel">Year</div>
+            <div class="metaValue" id="modalYear">—</div>
+          </div>
+          <div class="metaRow">
+            <div class="metaLabel">Team</div>
+            <div class="metaValue" id="modalTeam">—</div>
+          </div>
+          <div class="metaRow">
+            <div class="metaLabel">Parallel / Insert</div>
+            <div class="metaValue" id="modalParallel">—</div>
+          </div>
+          <div class="metaRow">
+            <div class="metaLabel">Condition</div>
+            <div class="metaValue" id="modalCondition">—</div>
+          </div>
+          <div class="metaRow">
+            <div class="metaLabel">Price</div>
+            <div class="metaValue" id="modalPrice">—</div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="modalActions">
+            <button class="btn" id="toggleSelectBtn">Select</button>
+            <button class="btn btnSecondary" id="exportThisBtn">Export This</button>
+          </div>
+
+          <div class="rawBox">
+            <div class="rawTitle">Raw fields</div>
+            <pre class="rawPre" id="modalRaw">—</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="footerLeft">
+      <span class="dot"></span>
+      <span id="statusText">Booting…</span>
+    </div>
+    <div class="footerRight">
+      <span class="muted">Files:</span>
+      <code>full_card_inventory.tsv</code>
+      <span class="muted">+</span>
+      <code>ebay_listing.csv</code>
+    </div>
+  </footer>
+
   <script src="./app.js"></script>
+</body>
+</html>
 
-  <script>
-    // tiny UI nicety: clear search
-    (function () {
-      const s = document.getElementById("searchInput");
-      const c = document.getElementById("clearSearch");
-      const emptyClear = document.getElementById("emptyClear");
-      const clearFilters = document.getElementById("clearFilters");
-
-      function sync() { c.style.visibility = s.value ? "visible" : "hidden"; }
-      sync();
-      s.addEventListener("input", sync);
-      c.addEventListener("click", () => {
-        s.value = "";
-        s.dispatchEvent(new Event("input", { bubbles: true }));
-        s.focus();
-        sync();
-      });
-
-      emptyClear.addEventListener("click", () => clearFilters.click());
-    })();
   </script>
 </body>
 </html>
