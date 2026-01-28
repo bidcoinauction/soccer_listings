@@ -544,14 +544,11 @@
   // ===== Modal open/close =====
   let lastFocus = null;
 
-  function setModalOpen(open) {
-    const modal = els.modal;
-    const backdrop = els.backdrop;
-
-    if (backdrop) backdrop.hidden = !open;
-    if (modal) modal.hidden = !open;
-
-    document.body.style.overflow = open ? "hidden" : "";
+ function setModalOpen(open) {
+  if (els.backdrop) els.backdrop.hidden = !open;
+  if (els.modal) els.modal.hidden = !open;
+  document.body.style.overflow = open ? "hidden" : "";
+}
 
     if (open) {
       lastFocus = document.activeElement;
@@ -644,6 +641,45 @@
         applyFilters();
       });
     }
+
+     // --- modal close (robust) ---
+const isModalOpen = () => {
+  const b = els.backdrop && !els.backdrop.hidden;
+  const m = els.modal && !els.modal.hidden;
+  return b || m;
+};
+
+function closeModalHard() {
+  // close both no matter what (prevents "stuck" drawer)
+  if (els.modal) els.modal.hidden = true;
+  if (els.backdrop) els.backdrop.hidden = true;
+  document.body.style.overflow = "";
+  selected = null;
+}
+
+if (els.closeModalBtn) {
+  els.closeModalBtn.addEventListener("click", closeModalHard);
+}
+
+// click backdrop closes (even if modal is nested / overlayed)
+if (els.backdrop) {
+  els.backdrop.addEventListener("click", () => closeModalHard());
+}
+
+// click outside modal closes (in case backdrop isn't covering correctly)
+document.addEventListener("mousedown", (e) => {
+  if (!isModalOpen()) return;
+  if (!els.modal) return;
+  if (!els.modal.contains(e.target) && e.target !== els.modal) {
+    closeModalHard();
+  }
+});
+
+// ESC closes
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && isModalOpen()) closeModalHard();
+});
+
 
     if (els.set) {
       els.set.addEventListener("change", (e) => {
