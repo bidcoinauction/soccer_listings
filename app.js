@@ -1,286 +1,725 @@
-/* Soccer eBay Lister
+/* Soccer eBay Lister — Inventory UX App
    - Loads ./full_card_inventory.tsv and ./ebay_listing.csv
-   - Shows thumbnails from IMAGE URL
-   - Generates File Exchange “Add” row aligned to your existing ebay_listing.csv columns
-   - Appends and downloads updated ebay_listing.csv
+   - Shows inventory grid with search + filters + selection
+   - Exports eBay File Exchange “Add” rows as CSV
+
+   Notes:
+   - This is a static frontend app. Run via a local server (not file://) so fetch() works.
 */
 
 (() => {
-  const $ = (id) => document.getElementById(id);
+  const $ = (sel) => document.querySelector(sel);
 
   const els = {
-    // top-level UI
-    status: $("resultCount"),
-    activeFilters: $("activeFilters"),
-    grid: $("cardGrid"),
-    emptyState: $("emptyState"),
+    status: $("#statusText"),
+    subTitle: $("#subTitle"),
+    grid: $("#cardsGrid"),
+    empty: $("#emptyState"),
 
-    // filters
-    search: $("searchInput"),
-    set: $("setFilter"),
-    team: $("teamFilter"),
-    league: $("leagueFilter"),
-    autoOnly: $("autoOnly"),
-    numberedOnly: $("numberedOnly"),
-    clearBtn: $("clearFilters"),
-    emptyClear: $("emptyClear"),
+    sidebar: $("#sidebar"),
+    sidebarToggle: $("#sidebarToggle"),
+    sidebarClose: $("#sidebarClose"),
+    backdrop: $("#backdrop"),
 
-    // modal
-    modal: $("detailsModal"),
-    backdrop: $("modalBackdrop"),
-    closeModalBtn: $("closeModal"),
+    search: $("#searchInput"),
+    clearSearch: $("#clearSearch"),
 
-    // modal fields
-    mTitle: $("modalTitle"),
-    mSet: $("modalSet"),
-    mCardNo: $("modalCardNumber"),
-    mFeatures: $("modalFeatures"),
-    mSeason: $("modalSeason"),
-    mBrand: $("modalBrand"),
-    mCondition: $("modalCondition"),
-    mPlayer: $("mPlayer"),
-    mTeam: $("mTeam"),
-    mLeague: $("mLeague"),
+    set: $("#setSelect"),
+    team: $("#teamSelect"),
+    league: $("#leagueSelect"),
+    year: $("#yearSelect"),
+    statusSelect: $("#statusSelect"),
+    minPrice: $("#minPrice"),
+    maxPrice: $("#maxPrice"),
+    hideNoImage: $("#hideNoImage"),
+    sort: $("#sortSelect"),
+    reset: $("#resetFiltersBtn"),
 
-    mImage: $("mImage"),
-    openImageBtn: $("openImageBtn"),
-    copyImageBtn: $("copyImageBtn"),
+    kpiTotal: $("#kpiTotal"),
+    kpiShown: $("#kpiShown"),
+    kpiSelected: $("#kpiSelected"),
 
-    mTitlePreview: $("mTitlePreview"),
-    mDescPreview: $("mDescPreview"),
-    mCsvRowPreview: $("mCsvRowPreview"),
+    selectAllShown: $("#selectAllShown"),
+    clearSelected: $("#clearSelected"),
 
-    copyTitleBtn: $("copyTitleBtn"),
-    copyDescBtn: $("copyDescBtn"),
-    appendEbayBtn: $("appendEbayBtn"),
+    exportSelected: $("#exportSelectedBtn"),
+    exportAll: $("#exportAllBtn"),
 
-    toast: $("toast"),
-    toastText: $("toastText"),
+    modal: $("#modal"),
+    modalClose: $("#modalClose"),
+    modalTitle: $("#modalTitle"),
+    modalImg: $("#modalImg"),
+    modalSku: $("#modalSku"),
+    modalPlayer: $("#modalPlayer"),
+    modalSet: $("#modalSet"),
+    modalYear: $("#modalYear"),
+    modalTeam: $("#modalTeam"),
+    modalParallel: $("#modalParallel"),
+    modalCondition: $("#modalCondition"),
+    modalPrice: $("#modalPrice"),
+    modalRaw: $("#modalRaw"),
+    toggleSelectBtn: $("#toggleSelectBtn"),
+    exportThisBtn: $("#exportThisBtn"),
   };
 
-  /** @type {Array<Record<string,string>>} */
-  let inventory = [];
-  /** @type {Array<Record<string,string>>} */
-  let filtered = [];
-  /** @type {Record<string,string> | null} */
-  let selected = null;
-
-  /** @type {string[][]} */
-  let ebayRows = [];
-  /** @type {string[]} */
-  let ebayHeader = []; // row1 in your file (index 1)
+  const FILES = {
+    inventory: "./full_card_inventory.tsv",
+    ebay: "./ebay_listing.csv",
+  };
 
   const state = {
-    q: "",
-    set: "",
-    team: "",
-    league: "",
-    autoOnly: false,
-    numberedOnly: false,
+    inventoryRaw: [],
+    inventoryNorm: [],
+    ebayRows: [],
+    ebaySkus: new Set(),
+
+    filtered: [],
+    selectedSkus: new Set(),
+    activeModalSku: null,
   };
 
-  // ===== Inventory field mapping =====
-  function inv(row, key) {
-    return String(row?.[key] ?? "").trim();
+  // ---------- Helpers ----------
+  function setStatus(msg, ok = true) {
+    els.status.textContent = msg;
+    const dot = document.querySelector(".dot");
+    if (dot) {
+      dot.style.background = ok ? "rgba(65,226,154,.9)" : "rgba(255,92,122,.9)";
+      dot.style.boxShadow = ok ? "0 0 0 4px rgba(65,226,154,.15)" : "0 0 0 4px rgba(255,92,122,.15)";
+    }
   }
 
-  function invTeam(row) {
-    return (row["Team "] ?? row["Team"] ?? "").toString().trim();
+  function safeStr(v) {
+    if (v === null || v === undefined) return "";
+    return String(v).trim();
   }
 
-  function firstYearFromText(s) {
-    const m = String(s || "").match(/\b(19|20)\d{2}\b/);
-    return m ? m[0] : "";
+  function toNumber(v) {
+    const s = safeStr(v).replace(/[$,]/g, "");
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
   }
 
-  function normalizeSeason(s) {
-    const m = String(s || "").match(/^(\d{4})\s*[-/]\s*(\d{4})$/);
-    if (!m) return String(s || "").trim();
-    const y1 = m[1];
-    const y2 = m[2].slice(2);
-    return `${y1}-${y2}`;
+  function uniqSorted(arr) {
+    const out = Array.from(new Set(arr.filter(Boolean)));
+    out.sort((a, b) => String(a).localeCompare(String(b)));
+    return out;
   }
 
-  function isAuto(row) {
-    const f = inv(row, "Features").toLowerCase();
-    return /\bauto\b|autograph|signed/.test(f);
+  function pick(obj, candidates) {
+    // return first matching key in obj (case-insensitive)
+    const keys = Object.keys(obj || {});
+    const lowerMap = new Map(keys.map(k => [k.toLowerCase(), k]));
+    for (const c of candidates) {
+      const found = lowerMap.get(String(c).toLowerCase());
+      if (found) return obj[found];
+    }
+    return "";
   }
 
-  function isNumbered(row) {
-    const f = inv(row, "Features");
-    return /\/\s*\d+/.test(f) || /\b\d+\s*\/\s*\d+\b/.test(f) || /\bnumbered\b|\bserial\b/i.test(f);
+  function downloadText(filename, text, mime = "text/plain;charset=utf-8") {
+    const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
-  // ===== TSV =====
-  function parseTSV(tsvText) {
-    const lines = tsvText
-      .replace(/\r\n/g, "\n")
-      .replace(/\r/g, "\n")
-      .split("\n")
-      .filter((l) => l.trim() !== "");
-    if (lines.length < 2) return [];
-
-    const headers = lines[0].split("\t").map((h) => h.trim());
+  // Robust CSV parse (handles quoted commas/newlines)
+  function parseCSV(text) {
     const rows = [];
+    let row = [];
+    let cur = "";
+    let inQuotes = false;
 
-    for (let i = 1; i < lines.length; i++) {
-      const cols = lines[i].split("\t");
-      const row = {};
-      for (let c = 0; c < headers.length; c++) row[headers[c]] = (cols[c] ?? "").trim();
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      const next = text[i + 1];
+
+      if (ch === '"' && inQuotes && next === '"') {
+        cur += '"';
+        i++;
+        continue;
+      }
+      if (ch === '"') {
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (!inQuotes && (ch === ",")) {
+        row.push(cur);
+        cur = "";
+        continue;
+      }
+      if (!inQuotes && (ch === "\n")) {
+        row.push(cur);
+        rows.push(row);
+        row = [];
+        cur = "";
+        continue;
+      }
+      if (!inQuotes && (ch === "\r")) continue;
+
+      cur += ch;
+    }
+    if (cur.length || row.length) {
+      row.push(cur);
       rows.push(row);
     }
     return rows;
   }
 
-  // ===== CSV parser =====
-  function parseCSV(text) {
-    const rows = [];
-    let row = [];
-    let cur = "";
-    let i = 0;
-    let inQuotes = false;
+  function rowsToObjects(rows) {
+    // skip info/comment lines if present
+    const trimmed = rows.filter(r => r.some(c => safeStr(c) !== ""));
+    let headerIdx = 0;
+    while (headerIdx < trimmed.length && safeStr(trimmed[headerIdx][0]).startsWith("#")) headerIdx++;
 
-    while (i < text.length) {
-      const ch = text[i];
-
-      if (inQuotes) {
-        if (ch === '"') {
-          const next = text[i + 1];
-          if (next === '"') {
-            cur += '"';
-            i += 2;
-            continue;
-          }
-          inQuotes = false;
-          i++;
-          continue;
-        }
-        cur += ch;
-        i++;
-        continue;
+    const header = trimmed[headerIdx] || [];
+    const out = [];
+    for (let i = headerIdx + 1; i < trimmed.length; i++) {
+      const r = trimmed[i];
+      const obj = {};
+      for (let j = 0; j < header.length; j++) {
+        const key = safeStr(header[j]) || `col_${j}`;
+        obj[key] = r[j] ?? "";
       }
-
-      if (ch === '"') { inQuotes = true; i++; continue; }
-      if (ch === ",") { row.push(cur); cur = ""; i++; continue; }
-      if (ch === "\n") { row.push(cur); rows.push(row); row = []; cur = ""; i++; continue; }
-      if (ch === "\r") { i++; continue; }
-
-      cur += ch;
-      i++;
+      out.push(obj);
     }
+    return { header, out };
+  }
 
-    row.push(cur);
-    rows.push(row);
-    return rows;
+  function parseTSV(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length);
+    const rows = lines.map(l => l.split("\t"));
+    const header = rows[0] || [];
+    const out = [];
+    for (let i = 1; i < rows.length; i++) {
+      const obj = {};
+      for (let j = 0; j < header.length; j++) {
+        const key = safeStr(header[j]) || `col_${j}`;
+        obj[key] = rows[i][j] ?? "";
+      }
+      out.push(obj);
+    }
+    return { header, out };
+  }
+
+  function normalizeCard(raw) {
+    // Heuristic mapping: works even if your columns differ a bit
+    const sku = safeStr(
+      pick(raw, [
+        "Custom label (SKU)", "SKU", "Sku", "custom label", "custom_label",
+        "CardID", "Card Id", "InventoryID", "Inventory Id"
+      ])
+    ) || safeStr(pick(raw, ["id", "ID"])) || "";
+
+    const player = safeStr(pick(raw, ["Player", "player_name", "Name", "Athlete", "Subject"]));
+    const set = safeStr(pick(raw, ["Set", "Product", "Program", "Collection", "Brand", "Set Name"]));
+    const team = safeStr(pick(raw, ["Team", "Club", "team_name"]));
+    const league = safeStr(pick(raw, ["League", "competition", "League/Competition"]));
+    const year = safeStr(pick(raw, ["Year", "Season", "season", "Release Year"]));
+    const cardNo = safeStr(pick(raw, ["Card Number", "Card#", "No", "Number", "#"]));
+
+    const parallel = safeStr(pick(raw, ["Parallel", "Parallels", "Variant", "Color", "Refractor"]));
+    const insert = safeStr(pick(raw, ["Insert", "Insert Set", "Subset"]));
+    const auto = safeStr(pick(raw, ["Autograph", "Auto", "Signature"]));
+    const serial = safeStr(pick(raw, ["Serial", "Serial Number", "SN", "Print Run", "Numbered"]));
+
+    const condition = safeStr(pick(raw, ["Condition", "Condition ID", "Grade", "Grading", "Raw/Graded"]));
+    const price = toNumber(pick(raw, ["Price", "List Price", "Your Price", "Asking", "Value"]));
+    const qty = toNumber(pick(raw, ["Quantity", "Qty", "Count"])) ?? 1;
+
+    const imageUrl = safeStr(
+      pick(raw, [
+        "Item photo URL", "Image", "Image URL", "ImageURL", "Photo", "Photo URL",
+        "Front Image", "Front", "img", "thumbnail"
+      ])
+    );
+
+    const titleHint = [
+      year, set, player, insert || parallel, cardNo ? `#${cardNo}` : "", serial
+    ].filter(Boolean).join(" ");
+
+    return {
+      sku,
+      player,
+      set,
+      team,
+      league,
+      year,
+      cardNo,
+      parallel,
+      insert,
+      auto,
+      serial,
+      condition,
+      price,
+      qty,
+      imageUrl,
+      titleHint,
+      raw,
+    };
+  }
+
+  function buildDisplayTitle(c) {
+    const chunks = [];
+    if (c.year) chunks.push(c.year);
+    if (c.set) chunks.push(c.set);
+    if (c.player) chunks.push(c.player);
+    const detail = [c.insert, c.parallel].filter(Boolean).join(" • ");
+    if (detail) chunks.push(detail);
+    if (c.cardNo) chunks.push(`#${c.cardNo}`);
+    if (c.serial) chunks.push(c.serial);
+    return chunks.join(" — ").trim() || "Card";
+  }
+
+  function buildSublineLeft(c) {
+    const left = [c.team, c.league].filter(Boolean).join(" • ");
+    return left || (c.set ? c.set : "—");
+  }
+
+  function isListedBySku(sku) {
+    if (!sku) return false;
+    return state.ebaySkus.has(String(sku).trim());
+  }
+
+  function cardMatchesSearch(c, q) {
+    if (!q) return true;
+    const hay = [
+      c.sku, c.player, c.team, c.league, c.set, c.year, c.parallel, c.insert, c.serial, c.cardNo
+    ].filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(q.toLowerCase());
+  }
+
+  // ---------- UI: sidebar & modal ----------
+  function setSidebarOpen(open) {
+    const isMobile = window.matchMedia("(max-width: 900px)").matches;
+    if (!isMobile) return;
+    els.sidebar.classList.toggle("open", open);
+    els.backdrop.hidden = !open;
+    document.body.style.overflow = open ? "hidden" : "";
+  }
+
+  function setModalOpen(open) {
+    els.modal.hidden = !open;
+    els.backdrop.hidden = !open;
+    document.body.style.overflow = open ? "hidden" : "";
+  }
+
+  function openModal(card) {
+    state.activeModalSku = card.sku || null;
+
+    els.modalTitle.textContent = buildDisplayTitle(card);
+    els.modalImg.src = card.imageUrl || "";
+    els.modalImg.alt = buildDisplayTitle(card);
+
+    els.modalSku.textContent = card.sku || "—";
+    els.modalPlayer.textContent = card.player || "—";
+    els.modalSet.textContent = card.set || "—";
+    els.modalYear.textContent = card.year || "—";
+    els.modalTeam.textContent = [card.team, card.league].filter(Boolean).join(" • ") || "—";
+    els.modalParallel.textContent = [card.insert, card.parallel, card.auto, card.serial].filter(Boolean).join(" • ") || "—";
+    els.modalCondition.textContent = card.condition || "—";
+    els.modalPrice.textContent = (card.price != null ? `$${card.price}` : "—");
+
+    els.modalRaw.textContent = JSON.stringify(card.raw, null, 2);
+
+    const selected = card.sku && state.selectedSkus.has(card.sku);
+    els.toggleSelectBtn.textContent = selected ? "Unselect" : "Select";
+
+    setModalOpen(true);
+  }
+
+  // ---------- Filters ----------
+  function populateSelect(selectEl, values) {
+    const cur = selectEl.value;
+    selectEl.innerHTML = `<option value="">All</option>` + values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+    // try to keep current selection if still present
+    if (values.includes(cur)) selectEl.value = cur;
   }
 
   function escapeHtml(s) {
     return String(s ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#039;");
   }
 
-  function uniqSorted(arr) {
-    return Array.from(new Set(arr.map((x) => (x ?? "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  function refreshFilterOptions(cards) {
+    populateSelect(els.set, uniqSorted(cards.map(c => c.set)));
+    populateSelect(els.team, uniqSorted(cards.map(c => c.team)));
+    populateSelect(els.league, uniqSorted(cards.map(c => c.league)));
+    // year should sort numerically when possible
+    const years = uniqSorted(cards.map(c => c.year));
+    years.sort((a,b) => (Number(b) || 0) - (Number(a) || 0));
+    populateSelect(els.year, years);
   }
 
-  function safeText(s) {
-    return String(s ?? "").replace(/\s+/g, " ").trim();
+  function getFilters() {
+    return {
+      q: safeStr(els.search.value),
+      set: safeStr(els.set.value),
+      team: safeStr(els.team.value),
+      league: safeStr(els.league.value),
+      year: safeStr(els.year.value),
+      status: safeStr(els.statusSelect.value),
+      minPrice: toNumber(els.minPrice.value),
+      maxPrice: toNumber(els.maxPrice.value),
+      hideNoImage: !!els.hideNoImage.checked,
+      sort: safeStr(els.sort.value),
+    };
   }
 
-  function clampTitle(s, max = 80) {
-    const t = safeText(s);
-    if (t.length <= max) return t;
-    return t.slice(0, max - 1).trimEnd() + "…";
+  function applyFilters() {
+    const f = getFilters();
+    const out = [];
+
+    for (const c of state.inventoryNorm) {
+      if (f.set && c.set !== f.set) continue;
+      if (f.team && c.team !== f.team) continue;
+      if (f.league && c.league !== f.league) continue;
+      if (f.year && c.year !== f.year) continue;
+
+      const listed = isListedBySku(c.sku);
+      if (f.status === "listed" && !listed) continue;
+      if (f.status === "unlisted" && listed) continue;
+
+      if (f.hideNoImage && !c.imageUrl) continue;
+
+      if (f.minPrice != null && (c.price == null || c.price < f.minPrice)) continue;
+      if (f.maxPrice != null && (c.price == null || c.price > f.maxPrice)) continue;
+
+      if (!cardMatchesSearch(c, f.q)) continue;
+
+      out.push(c);
+    }
+
+    // Sorting
+    out.sort((a, b) => {
+      switch (f.sort) {
+        case "player": return (a.player || "").localeCompare(b.player || "");
+        case "year_desc": return (Number(b.year) || 0) - (Number(a.year) || 0);
+        case "year_asc": return (Number(a.year) || 0) - (Number(b.year) || 0);
+        case "price_desc": return (Number(b.price) || 0) - (Number(a.price) || 0);
+        case "price_asc": return (Number(a.price) || 0) - (Number(b.price) || 0);
+        default: return 0;
+      }
+    });
+
+    state.filtered = out;
+    render();
   }
 
-  function buildEbayTitle(row) {
-    return clampTitle(inv(row, "Card Name") || "Soccer Card");
+  // ---------- Render ----------
+  function render() {
+    const cards = state.filtered;
+
+    els.kpiTotal.textContent = `Total: ${state.inventoryNorm.length}`;
+    els.kpiShown.textContent = `Shown: ${cards.length}`;
+    els.kpiSelected.textContent = `Selected: ${state.selectedSkus.size}`;
+
+    els.exportSelected.disabled = state.selectedSkus.size === 0;
+
+    els.grid.innerHTML = "";
+
+    if (!cards.length) {
+      els.empty.hidden = false;
+      return;
+    }
+    els.empty.hidden = true;
+
+    const frag = document.createDocumentFragment();
+
+    for (const c of cards) {
+      const listed = isListedBySku(c.sku);
+      const selected = c.sku && state.selectedSkus.has(c.sku);
+
+      const el = document.createElement("article");
+      el.className = "card" + (selected ? " selected" : "");
+      el.tabIndex = 0;
+
+      const title = buildDisplayTitle(c);
+      const subLeft = buildSublineLeft(c);
+      const priceStr = c.price != null ? `$${c.price}` : "—";
+
+      el.innerHTML = `
+        <div class="thumb">
+          ${c.imageUrl
+            ? `<img loading="lazy" referrerpolicy="no-referrer" src="${escapeHtml(c.imageUrl)}" alt="${escapeHtml(title)}">`
+            : `<div style="color: rgba(255,255,255,.45); font-size: 12px;">No image</div>`
+          }
+          <div class="badgeRow">
+            <span class="badge ${listed ? "ok" : "warn"}">${listed ? "Listed" : "Unlisted"}</span>
+            <span class="badge">${escapeHtml(c.sku || "No SKU")}</span>
+          </div>
+        </div>
+        <div class="cardBody">
+          <div class="titleLine">${escapeHtml(title)}</div>
+          <div class="subLine">
+            <div class="subLeft">${escapeHtml(subLeft || "—")}</div>
+            <div class="subRight">${escapeHtml(priceStr)}</div>
+          </div>
+        </div>
+      `;
+
+      el.addEventListener("click", () => openModal(c));
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openModal(c);
+        }
+      });
+
+      frag.appendChild(el);
+    }
+
+    els.grid.appendChild(frag);
   }
 
-  function buildEbayDescriptionHTML(row) {
-    const cardName = inv(row, "Card Name") || "Soccer Card";
-    const player = inv(row, "Player Name");
-    const setFull = inv(row, "Card Set");
-    const brand = inv(row, "Brand");
-    const league = inv(row, "League");
-    const team = invTeam(row);
-    const cardNo = inv(row, "Card Number");
-    const features = inv(row, "Features");
-    const season = inv(row, "Season");
-    const condition = inv(row, "Condition") || "See photos";
+  // ---------- eBay export ----------
+  function buildEbayAddRowFromCard(c) {
+    // We will produce a conservative “Add” row aligned to common eBay File Exchange headers.
+    // If your ebay_listing.csv has a different header set, we’ll map into it when exporting.
 
-    const bullets = [
-      ["Card", cardName],
-      ["Player", player],
-      ["Set", setFull],
-      ["Brand", brand],
-      ["League", league],
-      ["Team", team],
-      ["Card #", cardNo],
-      ["Features", features],
-      ["Season", season],
-      ["Condition", condition],
-    ].filter(([, v]) => safeText(v) !== "");
+    const title = buildDisplayTitle(c).slice(0, 80); // keep a safe-ish title length
+    const description = [
+      c.player ? `<b>Player:</b> ${escapeHtml(c.player)}` : "",
+      c.set ? `<b>Set:</b> ${escapeHtml(c.set)}` : "",
+      c.team ? `<b>Team:</b> ${escapeHtml(c.team)}` : "",
+      c.league ? `<b>League:</b> ${escapeHtml(c.league)}` : "",
+      c.year ? `<b>Year:</b> ${escapeHtml(c.year)}` : "",
+      c.insert ? `<b>Insert:</b> ${escapeHtml(c.insert)}` : "",
+      c.parallel ? `<b>Parallel:</b> ${escapeHtml(c.parallel)}` : "",
+      c.serial ? `<b>Serial:</b> ${escapeHtml(c.serial)}` : "",
+      c.cardNo ? `<b>Card #:</b> ${escapeHtml(c.cardNo)}` : "",
+      c.condition ? `<b>Condition:</b> ${escapeHtml(c.condition)}` : "",
+    ].filter(Boolean).join("<br>");
 
-    const li = bullets.map(([k, v]) => `<li><b>${escapeHtml(k)}:</b> ${escapeHtml(v)}</li>`).join("");
-    const autoLine = isAuto(row) ? `<p><b>Autograph:</b> Yes</p>` : "";
-    const numberedLine = isNumbered(row) ? `<p><b>Serial numbered:</b> Yes</p>` : "";
-
-    return [
-      `<div>`,
-      `<p><b>${escapeHtml(cardName)}</b></p>`,
-      `<ul>${li}</ul>`,
-      autoLine,
-      numberedLine,
-      `<p>Shipped with care. Please review photos for exact condition.</p>`,
-      `</div>`,
-    ].filter(Boolean).join("");
+    return {
+      "Action": "Add",
+      "Custom label (SKU)": c.sku || "",
+      "Title": title,
+      "Price": c.price != null ? String(c.price) : "",
+      "Quantity": String(c.qty ?? 1),
+      "Item photo URL": c.imageUrl || "",
+      "Description": description || "",
+      // Leave other fields blank to avoid wrong category/condition IDs etc.
+    };
   }
 
-  // ===== File Exchange row builder =====
-  function headerIndex(name) {
-    const idx = ebayHeader.findIndex((h) => (h ?? "").trim() === name);
-    if (idx >= 0) return idx;
-    const n = (name ?? "").trim().toLowerCase();
-    return ebayHeader.findIndex((h) => (h ?? "").trim().toLowerCase() === n);
+  function csvEscape(v) {
+    const s = safeStr(v);
+    if (/[,"\n\r]/.test(s)) return `"${s.replaceAll('"','""')}"`;
+    return s;
   }
 
-  function deriveSetShort(setFull) {
-    const s = String(setFull || "").trim();
-    if (!s) return "";
-    const noYear = s.replace(/^\d{4}\s+/, "").trim();
-    const parts = noYear.split(/\s+/);
-    if (parts.length >= 3 && /^[A-Z0-9]{2,}$/.test(parts[parts.length - 1])) parts.pop();
-    return parts.slice(0, 2).join(" ");
+  function exportCards(cards, modeLabel) {
+    if (!cards.length) {
+      setStatus("Nothing to export.", false);
+      return;
+    }
+
+    // If we can detect an existing ebay_listing.csv header, we will align to it.
+    let header = null;
+    if (state.ebayRows && state.ebayRows.header && state.ebayRows.header.length) {
+      header = state.ebayRows.header;
+    }
+
+    const addRows = cards.map(buildEbayAddRowFromCard);
+
+    // If no header found, use a sane default.
+    const defaultHeader = [
+      "Action",
+      "Custom label (SKU)",
+      "Title",
+      "Price",
+      "Quantity",
+      "Item photo URL",
+      "Description"
+    ];
+
+    const outHeader = header && header.length ? header : defaultHeader;
+
+    const lines = [];
+    lines.push(outHeader.map(csvEscape).join(","));
+
+    for (const r of addRows) {
+      const line = outHeader.map(h => csvEscape(r[h] ?? ""));
+      lines.push(line.join(","));
+    }
+
+    const ts = new Date().toISOString().slice(0,19).replaceAll(":","-");
+    downloadText(`ebay_add_${modeLabel}_${ts}.csv`, lines.join("\n"), "text/csv;charset=utf-8");
+    setStatus(`Exported ${cards.length} row(s) to CSV.`);
   }
 
-  function buildEbayAddRowFromInventory(row) {
-    const out = new Array(ebayHeader.length).fill("");
+  // ---------- Load data ----------
+  async function loadText(url) {
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`${url} → ${res.status}`);
+    return await res.text();
+  }
 
-    // Your template uses "Add" in column 2 (index 2)
-    out[2] = "Add";
+  async function boot() {
+    try {
+      setStatus("Loading inventory + eBay listings…");
 
-    const catIdx = headerIndex("*Category");
-    if (catIdx >= 0) out[catIdx] = "261328";
+      const [tsvText, csvText] = await Promise.all([
+        loadText(FILES.inventory),
+        loadText(FILES.ebay),
+      ]);
 
-    const titleIdx = headerIndex("*Title");
-    if (titleIdx >= 0) out[titleIdx] = buildEbayTitle(row);
+      // Parse inventory TSV
+      const inv = parseTSV(tsvText);
+      state.inventoryRaw = inv.out;
+      state.inventoryNorm = inv.out.map(normalizeCard);
 
-    const picIdx = headerIndex("PicURL");
-    const img = inv(row, "IMAGE URL");
-    if (picIdx >= 0) out[picIdx] = img;
+      // Parse ebay CSV
+      const csvRows = parseCSV(csvText);
+      const ebay = rowsToObjects(csvRows);
+      state.ebayRows = ebay;
 
-    const playerIdx = headerIndex("C:Player/Athlete");
-    if (playerIdx >= 0) out[playerIdx] = inv(row, "Player Name");
+      // Build SKU set from ebay csv (robust key detection)
+      const skus = new Set();
+      for (const row of ebay.out) {
+        const sku = safeStr(pick(row, ["Custom label (SKU)", "SKU", "Custom label", "CustomLabel"]));
+        if (sku) skus.add(sku);
+      }
+      state.ebaySkus = skus;
 
-    const teamIdx = headerIndex("C:Team");
-    if (teamIdx >= 0) out[teamIdx] = invTeam(row);
+      // Subtitle
+      els.subTitle.textContent = `${state.inventoryNorm.length} cards • ${state.ebaySkus.size} listed (by SKU)`;
 
-    const leagueIdx = headerIndex("C:League");
-    if (leagueIdx >= 0) out[leagueIdx] = inv(row, "League");
+      // Filters
+      refreshFilterOptions(state.inventoryNorm);
 
-    const parallelIdx = headerIndex("C
+      // Initial filtered set
+      state.filtered = [...state.inventoryNorm];
+      applyFilters();
+
+      setStatus("Ready.");
+    } catch (err) {
+      console.error(err);
+      els.subTitle.textContent = "Load failed";
+      setStatus(`Error loading files. Are you running via http server? (${err.message})`, false);
+    }
+  }
+
+  // ---------- Events ----------
+  function wireEvents() {
+    // Sidebar
+    els.sidebarToggle.addEventListener("click", () => setSidebarOpen(true));
+    els.sidebarClose.addEventListener("click", () => setSidebarOpen(false));
+    els.backdrop.addEventListener("click", () => {
+      // close sidebar on mobile OR close modal
+      if (!els.modal.hidden) setModalOpen(false);
+      setSidebarOpen(false);
+    });
+
+    // Search
+    els.search.addEventListener("input", debounce(applyFilters, 120));
+    els.clearSearch.addEventListener("click", () => {
+      els.search.value = "";
+      applyFilters();
+      els.search.focus();
+    });
+
+    // Filters
+    [els.set, els.team, els.league, els.year, els.statusSelect, els.hideNoImage, els.sort].forEach(el => {
+      el.addEventListener("change", applyFilters);
+    });
+    [els.minPrice, els.maxPrice].forEach(el => el.addEventListener("input", debounce(applyFilters, 180)));
+
+    els.reset.addEventListener("click", () => {
+      els.search.value = "";
+      els.set.value = "";
+      els.team.value = "";
+      els.league.value = "";
+      els.year.value = "";
+      els.statusSelect.value = "";
+      els.minPrice.value = "";
+      els.maxPrice.value = "";
+      els.hideNoImage.checked = false;
+      els.sort.value = "recent";
+      applyFilters();
+    });
+
+    // Selection controls
+    els.selectAllShown.addEventListener("click", () => {
+      for (const c of state.filtered) {
+        if (c.sku) state.selectedSkus.add(c.sku);
+      }
+      applyFilters(); // will rerender + update KPIs
+    });
+
+    els.clearSelected.addEventListener("click", () => {
+      state.selectedSkus.clear();
+      applyFilters();
+    });
+
+    // Export buttons
+    els.exportSelected.addEventListener("click", () => {
+      const cards = state.inventoryNorm.filter(c => c.sku && state.selectedSkus.has(c.sku));
+      exportCards(cards, "selected");
+    });
+
+    els.exportAll.addEventListener("click", () => {
+      exportCards(state.filtered, "filtered");
+    });
+
+    // Modal controls
+    els.modalClose.addEventListener("click", () => setModalOpen(false));
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        if (!els.modal.hidden) setModalOpen(false);
+        setSidebarOpen(false);
+      }
+    });
+
+    els.toggleSelectBtn.addEventListener("click", () => {
+      const sku = state.activeModalSku;
+      if (!sku) return;
+      if (state.selectedSkus.has(sku)) state.selectedSkus.delete(sku);
+      else state.selectedSkus.add(sku);
+
+      els.toggleSelectBtn.textContent = state.selectedSkus.has(sku) ? "Unselect" : "Select";
+      applyFilters();
+    });
+
+    els.exportThisBtn.addEventListener("click", () => {
+      const sku = state.activeModalSku;
+      if (!sku) return;
+      const card = state.inventoryNorm.find(c => c.sku === sku);
+      if (card) exportCards([card], "single");
+    });
+
+    // Resize behavior
+    window.addEventListener("resize", () => {
+      // if desktop, ensure sidebar/backdrop aren’t in mobile state
+      const isMobile = window.matchMedia("(max-width: 900px)").matches;
+      if (!isMobile) {
+        els.sidebar.classList.remove("open");
+        els.backdrop.hidden = true;
+        document.body.style.overflow = "";
+      }
+    });
+  }
+
+  function debounce(fn, ms) {
+    let t = null;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), ms);
+    };
+  }
+
+  // ---------- Start ----------
+  wireEvents();
+  boot();
+})();
+
