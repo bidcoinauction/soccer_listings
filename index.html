@@ -11,7 +11,7 @@
       <header class="header">
         <div class="title-wrap">
           <h1 class="title">⚽ Soccer eBay Lister</h1>
-          <p class="subtitle">Browse your inventory, filter, and copy clean eBay listing text.</p>
+          <p class="subtitle">Inventory → click a card → generate an “Add” row for your eBay File Exchange CSV.</p>
         </div>
 
         <div class="header-actions">
@@ -65,12 +65,11 @@
           <button id="clearBtn" class="btn btn-ghost" type="button">Clear filters</button>
         </div>
 
-        <p class="tip">Tip: click a card to open details, then copy title/description.</p>
+        <p class="tip">Tip: click a card → preview title/images → “Append + Download eBay CSV”.</p>
       </section>
 
       <main class="main">
         <div class="status" id="statusText">Loading inventory…</div>
-
         <div class="grid" id="cardsGrid" aria-live="polite"></div>
       </main>
 
@@ -86,36 +85,49 @@
           </div>
 
           <div class="modal-body">
-            <dl class="meta">
-              <div class="meta-item">
-                <dt>Set</dt>
-                <dd id="mSet">—</dd>
+            <div class="media-and-meta">
+              <div class="media">
+                <div class="media-frame">
+                  <img id="mImage" class="media-img" alt="Card image" />
+                </div>
+                <div class="media-actions">
+                  <button class="btn btn-secondary" id="openImageBtn" type="button">Open image</button>
+                  <button class="btn btn-secondary" id="copyImageBtn" type="button">Copy image URL</button>
+                </div>
               </div>
-              <div class="meta-item">
-                <dt>Card #</dt>
-                <dd id="mCardNo">—</dd>
-              </div>
-              <div class="meta-item">
-                <dt>Features</dt>
-                <dd id="mFeatures">—</dd>
-              </div>
-              <div class="meta-item">
-                <dt>Season</dt>
-                <dd id="mSeason">—</dd>
-              </div>
-              <div class="meta-item">
-                <dt>Brand</dt>
-                <dd id="mBrand">—</dd>
-              </div>
-              <div class="meta-item">
-                <dt>Condition</dt>
-                <dd id="mCondition">—</dd>
-              </div>
-            </dl>
+
+              <dl class="meta">
+                <div class="meta-item">
+                  <dt>Set</dt>
+                  <dd id="mSet">—</dd>
+                </div>
+                <div class="meta-item">
+                  <dt>Card #</dt>
+                  <dd id="mCardNo">—</dd>
+                </div>
+                <div class="meta-item">
+                  <dt>Features</dt>
+                  <dd id="mFeatures">—</dd>
+                </div>
+                <div class="meta-item">
+                  <dt>Season</dt>
+                  <dd id="mSeason">—</dd>
+                </div>
+                <div class="meta-item">
+                  <dt>Brand</dt>
+                  <dd id="mBrand">—</dd>
+                </div>
+                <div class="meta-item">
+                  <dt>Condition</dt>
+                  <dd id="mCondition">—</dd>
+                </div>
+              </dl>
+            </div>
 
             <div class="copy-row">
               <button class="btn btn-primary" id="copyTitleBtn" type="button">Copy eBay Title</button>
               <button class="btn btn-primary" id="copyDescBtn" type="button">Copy eBay Description (HTML)</button>
+              <button class="btn btn-primary" id="appendEbayBtn" type="button">Append + Download eBay CSV</button>
             </div>
 
             <div class="preview">
@@ -133,6 +145,11 @@
                 <div class="preview-label">Description (HTML):</div>
                 <pre class="preview-code" id="mDescPreview">—</pre>
               </div>
+
+              <div class="preview-row">
+                <div class="preview-label">eBay CSV Row (preview):</div>
+                <pre class="preview-code" id="mCsvRowPreview">—</pre>
+              </div>
             </div>
 
             <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true" hidden>
@@ -146,3 +163,4 @@
     <script src="./app.js"></script>
   </body>
 </html>
+
