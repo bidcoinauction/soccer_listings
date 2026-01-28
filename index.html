@@ -18,12 +18,8 @@
       </div>
 
       <div class="header-actions">
-        <a class="btn btn-secondary" id="downloadTsv" href="./full_card_inventory.tsv" download>
-          Download TSV
-        </a>
-        <a class="btn btn-secondary" id="downloadCsv" href="./ebay_listing.csv" download>
-          Download eBay CSV
-        </a>
+        <a class="btn btn-secondary" href="./full_card_inventory.tsv" download>Download TSV</a>
+        <a class="btn btn-secondary" href="./ebay_listing.csv" download>Download eBay CSV</a>
       </div>
     </div>
   </header>
@@ -32,18 +28,11 @@
     <section class="container">
       <div class="toolbar">
         <div class="toolbar-row">
-          <label class="field field-search" aria-label="Search">
+          <label class="field field-search">
             <span class="field-label">Search</span>
             <div class="field-control">
-              <input
-                id="searchInput"
-                type="search"
-                placeholder="Player, team, set, card #, season…"
-                autocomplete="off"
-              />
-              <button class="icon-btn" id="clearSearch" type="button" title="Clear search" aria-label="Clear search">
-                ✕
-              </button>
+              <input id="searchInput" type="search" placeholder="Player, team, set, card #, season…" autocomplete="off" />
+              <button class="icon-btn icon-btn-sm" id="clearSearch" type="button" aria-label="Clear search" title="Clear">✕</button>
             </div>
           </label>
 
@@ -70,12 +59,12 @@
         </div>
 
         <div class="toolbar-row toolbar-row-secondary">
-          <label class="check">
+          <label class="pill-check">
             <input id="autoOnly" type="checkbox" />
             <span>Auto only</span>
           </label>
 
-          <label class="check">
+          <label class="pill-check">
             <input id="numberedOnly" type="checkbox" />
             <span>Numbered only (/xx)</span>
           </label>
@@ -84,125 +73,108 @@
 
           <div class="toolbar-spacer"></div>
 
-          <p class="tip" id="tipText">
-            Tip: click a card to open details, then copy title/description.
-          </p>
+          <p class="tip">Tip: click a card to open details, then copy title/description.</p>
         </div>
       </div>
 
       <div class="status-row">
-        <div class="status-pill" id="resultCount" aria-live="polite">Loading inventory…</div>
+        <div class="status-pill" id="resultCount" aria-live="polite">Loading…</div>
         <div class="status-muted" id="activeFilters" aria-live="polite"></div>
       </div>
 
-      <section class="grid" id="cardGrid" aria-label="Inventory results">
-        <!-- JS renders cards here -->
-      </section>
+      <section class="grid" id="cardGrid" aria-label="Inventory results"></section>
 
       <div class="empty-state" id="emptyState" hidden>
         <div class="empty-icon" aria-hidden="true">🗂️</div>
         <h2>No matches</h2>
-        <p>Try clearing filters or searching a different term.</p>
-        <button class="btn btn-secondary" type="button" id="emptyClear">Clear filters</button>
+        <p>Try a different search term or clear filters.</p>
+        <button class="btn btn-secondary" id="emptyClear" type="button">Clear filters</button>
       </div>
     </section>
   </main>
 
-  <!-- Modal / Details -->
+  <!-- Backdrop + Drawer -->
   <div class="modal-backdrop" id="modalBackdrop" hidden></div>
 
   <aside class="modal" id="detailsModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>
     <div class="modal-header">
       <div class="modal-header-text">
-        <div class="modal-kicker">Selected</div>
+        <div class="modal-kicker">Selected card</div>
         <h2 class="modal-title" id="modalTitle">—</h2>
       </div>
       <button class="icon-btn" id="closeModal" type="button" aria-label="Close">✕</button>
     </div>
 
     <div class="modal-body">
-      <dl class="meta-grid">
-        <div class="meta-item">
-          <dt>Set</dt>
-          <dd id="modalSet">—</dd>
+      <div class="modal-image-wrap">
+        <img id="mImage" class="modal-image" alt="" />
+        <div class="modal-image-actions">
+          <button class="btn btn-secondary" id="openImageBtn" type="button">Open image</button>
+          <button class="btn btn-secondary" id="copyImageBtn" type="button">Copy image URL</button>
         </div>
-        <div class="meta-item">
-          <dt>Card #</dt>
-          <dd id="modalCardNumber">—</dd>
+      </div>
+
+      <div class="meta-block">
+        <div class="meta-grid">
+          <div class="meta-item"><div class="meta-label">Player</div><div class="meta-value" id="mPlayer">—</div></div>
+          <div class="meta-item"><div class="meta-label">Card Number</div><div class="meta-value" id="modalCardNumber">—</div></div>
+          <div class="meta-item"><div class="meta-label">Team</div><div class="meta-value" id="mTeam">—</div></div>
+          <div class="meta-item"><div class="meta-label">Set</div><div class="meta-value" id="modalSet">—</div></div>
+          <div class="meta-item"><div class="meta-label">Manufacturer</div><div class="meta-value" id="modalBrand">—</div></div>
+          <div class="meta-item"><div class="meta-label">Season</div><div class="meta-value" id="modalSeason">—</div></div>
+          <div class="meta-item"><div class="meta-label">League</div><div class="meta-value" id="mLeague">—</div></div>
+          <div class="meta-item"><div class="meta-label">Features</div><div class="meta-value" id="modalFeatures">—</div></div>
+          <div class="meta-item"><div class="meta-label">Condition</div><div class="meta-value" id="modalCondition">—</div></div>
         </div>
-        <div class="meta-item">
-          <dt>Features</dt>
-          <dd id="modalFeatures">—</dd>
-        </div>
-        <div class="meta-item">
-          <dt>Season</dt>
-          <dd id="modalSeason">—</dd>
-        </div>
-        <div class="meta-item">
-          <dt>Brand</dt>
-          <dd id="modalBrand">—</dd>
-        </div>
-        <div class="meta-item">
-          <dt>Condition</dt>
-          <dd id="modalCondition">—</dd>
-        </div>
-      </dl>
+      </div>
 
       <div class="modal-actions">
         <button class="btn btn-primary" id="copyTitleBtn" type="button">Copy eBay Title</button>
-        <button class="btn btn-secondary" id="copyDescBtn" type="button">Copy eBay Description (HTML)</button>
+        <button class="btn btn-primary" id="copyDescBtn" type="button">Copy eBay Description (HTML)</button>
+        <button class="btn btn-ghost" id="appendEbayBtn" type="button">Append + Download updated CSV</button>
       </div>
 
       <div class="divider"></div>
 
-      <div class="modal-preview">
-        <div class="preview-label">Card Name</div>
-        <div class="preview-value" id="modalCardName">—</div>
-      </div>
+      <div class="preview-block">
+        <div class="preview-label">Title preview</div>
+        <div class="preview-box" id="mTitlePreview">—</div>
 
-      <div class="modal-images" id="modalImages">
-        <!-- optional: JS can inject images -->
+        <div class="preview-label">Description preview (HTML string)</div>
+        <pre class="preview-pre" id="mDescPreview">—</pre>
+
+        <div class="preview-label">CSV row preview</div>
+        <pre class="preview-pre" id="mCsvRowPreview">—</pre>
       </div>
     </div>
   </aside>
 
-  <!-- Toast -->
-  <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+  <div class="toast" id="toast" hidden>
     <span class="toast-dot" aria-hidden="true"></span>
     <span id="toastText">Copied</span>
   </div>
 
   <script src="./app.js"></script>
 
-  <!-- tiny UX glue that won't fight app.js -->
   <script>
-    // Non-invasive helpers: clear search button + empty-state clear button.
+    // tiny UI nicety: clear search
     (function () {
-      const $ = (id) => document.getElementById(id);
+      const s = document.getElementById("searchInput");
+      const c = document.getElementById("clearSearch");
+      const emptyClear = document.getElementById("emptyClear");
+      const clearFilters = document.getElementById("clearFilters");
 
-      const search = $("searchInput");
-      const clear = $("clearSearch");
-      const emptyClear = $("emptyClear");
-      const clearFilters = $("clearFilters");
+      function sync() { c.style.visibility = s.value ? "visible" : "hidden"; }
+      sync();
+      s.addEventListener("input", sync);
+      c.addEventListener("click", () => {
+        s.value = "";
+        s.dispatchEvent(new Event("input", { bubbles: true }));
+        s.focus();
+        sync();
+      });
 
-      function updateClearBtn() {
-        clear.style.visibility = search.value ? "visible" : "hidden";
-      }
-
-      if (search && clear) {
-        updateClearBtn();
-        search.addEventListener("input", updateClearBtn);
-        clear.addEventListener("click", () => {
-          search.value = "";
-          search.dispatchEvent(new Event("input", { bubbles: true }));
-          search.focus();
-          updateClearBtn();
-        });
-      }
-
-      if (emptyClear && clearFilters) {
-        emptyClear.addEventListener("click", () => clearFilters.click());
-      }
+      emptyClear.addEventListener("click", () => clearFilters.click());
     })();
   </script>
 </body>
