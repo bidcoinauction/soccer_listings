@@ -1,55 +1,75 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Soccer eBay Lister</title>
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <div class="app">
-      <header class="header">
-        <div class="title-wrap">
-          <h1 class="title">⚽ Soccer eBay Lister</h1>
-          <p class="subtitle">Inventory → click a card → generate an “Add” row for your eBay File Exchange CSV.</p>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Soccer eBay Lister</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="container header-inner">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">⚽</div>
+        <div class="brand-text">
+          <h1 class="title">Soccer eBay Lister</h1>
+          <p class="subtitle">Browse your inventory, filter, and copy clean eBay listing text.</p>
         </div>
+      </div>
 
-        <div class="header-actions">
-          <a class="btn btn-secondary" href="./full_card_inventory.tsv" download>Download TSV</a>
-          <a class="btn btn-secondary" href="./ebay_listing.csv" download>Download eBay CSV</a>
-        </div>
-      </header>
+      <div class="header-actions">
+        <a class="btn btn-secondary" id="downloadTsv" href="./full_card_inventory.tsv" download>
+          Download TSV
+        </a>
+        <a class="btn btn-secondary" id="downloadCsv" href="./ebay_listing.csv" download>
+          Download eBay CSV
+        </a>
+      </div>
+    </div>
+  </header>
 
-      <section class="controls" aria-label="Filters">
-        <div class="controls-row">
-          <label class="field">
+  <main class="app-main">
+    <section class="container">
+      <div class="toolbar">
+        <div class="toolbar-row">
+          <label class="field field-search" aria-label="Search">
             <span class="field-label">Search</span>
-            <input id="searchInput" class="input" type="search" placeholder="Player, team, set, card #…" autocomplete="off" />
+            <div class="field-control">
+              <input
+                id="searchInput"
+                type="search"
+                placeholder="Player, team, set, card #, season…"
+                autocomplete="off"
+              />
+              <button class="icon-btn" id="clearSearch" type="button" title="Clear search" aria-label="Clear search">
+                ✕
+              </button>
+            </div>
           </label>
 
           <label class="field">
             <span class="field-label">Set</span>
-            <select id="setSelect" class="select">
+            <select id="setFilter">
               <option value="">All</option>
             </select>
           </label>
 
           <label class="field">
             <span class="field-label">Team</span>
-            <select id="teamSelect" class="select">
+            <select id="teamFilter">
               <option value="">All</option>
             </select>
           </label>
 
           <label class="field">
             <span class="field-label">League</span>
-            <select id="leagueSelect" class="select">
+            <select id="leagueFilter">
               <option value="">All</option>
             </select>
           </label>
         </div>
 
-        <div class="controls-row controls-row-compact">
+        <div class="toolbar-row toolbar-row-secondary">
           <label class="check">
             <input id="autoOnly" type="checkbox" />
             <span>Auto only</span>
@@ -60,107 +80,131 @@
             <span>Numbered only (/xx)</span>
           </label>
 
-          <div class="spacer"></div>
+          <button class="btn btn-ghost" id="clearFilters" type="button">Clear filters</button>
 
-          <button id="clearBtn" class="btn btn-ghost" type="button">Clear filters</button>
-        </div>
+          <div class="toolbar-spacer"></div>
 
-        <p class="tip">Tip: click a card → preview title/images → “Append + Download eBay CSV”.</p>
-      </section>
-
-      <main class="main">
-        <div class="status" id="statusText">Loading inventory…</div>
-        <div class="grid" id="cardsGrid" aria-live="polite"></div>
-      </main>
-
-      <!-- Modal -->
-      <div class="modal-backdrop" id="modalBackdrop" hidden>
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-          <div class="modal-header">
-            <div class="modal-headings">
-              <div class="modal-kicker">Selected</div>
-              <h2 class="modal-title" id="modalTitle">—</h2>
-            </div>
-            <button class="icon-btn" id="closeModalBtn" type="button" aria-label="Close">✕</button>
-          </div>
-
-          <div class="modal-body">
-            <div class="media-and-meta">
-              <div class="media">
-                <div class="media-frame">
-                  <img id="mImage" class="media-img" alt="Card image" />
-                </div>
-                <div class="media-actions">
-                  <button class="btn btn-secondary" id="openImageBtn" type="button">Open image</button>
-                  <button class="btn btn-secondary" id="copyImageBtn" type="button">Copy image URL</button>
-                </div>
-              </div>
-
-              <dl class="meta">
-                <div class="meta-item">
-                  <dt>Set</dt>
-                  <dd id="mSet">—</dd>
-                </div>
-                <div class="meta-item">
-                  <dt>Card #</dt>
-                  <dd id="mCardNo">—</dd>
-                </div>
-                <div class="meta-item">
-                  <dt>Features</dt>
-                  <dd id="mFeatures">—</dd>
-                </div>
-                <div class="meta-item">
-                  <dt>Season</dt>
-                  <dd id="mSeason">—</dd>
-                </div>
-                <div class="meta-item">
-                  <dt>Brand</dt>
-                  <dd id="mBrand">—</dd>
-                </div>
-                <div class="meta-item">
-                  <dt>Condition</dt>
-                  <dd id="mCondition">—</dd>
-                </div>
-              </dl>
-            </div>
-
-            <div class="copy-row">
-              <button class="btn btn-primary" id="copyTitleBtn" type="button">Copy eBay Title</button>
-              <button class="btn btn-primary" id="copyDescBtn" type="button">Copy eBay Description (HTML)</button>
-              <button class="btn btn-primary" id="appendEbayBtn" type="button">Append + Download eBay CSV</button>
-            </div>
-
-            <div class="preview">
-              <div class="preview-row">
-                <div class="preview-label">Card Name:</div>
-                <div class="preview-value" id="mName">—</div>
-              </div>
-
-              <div class="preview-row">
-                <div class="preview-label">Title:</div>
-                <div class="preview-value mono" id="mTitlePreview">—</div>
-              </div>
-
-              <div class="preview-row">
-                <div class="preview-label">Description (HTML):</div>
-                <pre class="preview-code" id="mDescPreview">—</pre>
-              </div>
-
-              <div class="preview-row">
-                <div class="preview-label">eBay CSV Row (preview):</div>
-                <pre class="preview-code" id="mCsvRowPreview">—</pre>
-              </div>
-            </div>
-
-            <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true" hidden>
-              Copied
-            </div>
-          </div>
+          <p class="tip" id="tipText">
+            Tip: click a card to open details, then copy title/description.
+          </p>
         </div>
       </div>
+
+      <div class="status-row">
+        <div class="status-pill" id="resultCount" aria-live="polite">Loading inventory…</div>
+        <div class="status-muted" id="activeFilters" aria-live="polite"></div>
+      </div>
+
+      <section class="grid" id="cardGrid" aria-label="Inventory results">
+        <!-- JS renders cards here -->
+      </section>
+
+      <div class="empty-state" id="emptyState" hidden>
+        <div class="empty-icon" aria-hidden="true">🗂️</div>
+        <h2>No matches</h2>
+        <p>Try clearing filters or searching a different term.</p>
+        <button class="btn btn-secondary" type="button" id="emptyClear">Clear filters</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal / Details -->
+  <div class="modal-backdrop" id="modalBackdrop" hidden></div>
+
+  <aside class="modal" id="detailsModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" hidden>
+    <div class="modal-header">
+      <div class="modal-header-text">
+        <div class="modal-kicker">Selected</div>
+        <h2 class="modal-title" id="modalTitle">—</h2>
+      </div>
+      <button class="icon-btn" id="closeModal" type="button" aria-label="Close">✕</button>
     </div>
 
-    <script src="./app.js"></script>
-  </body>
+    <div class="modal-body">
+      <dl class="meta-grid">
+        <div class="meta-item">
+          <dt>Set</dt>
+          <dd id="modalSet">—</dd>
+        </div>
+        <div class="meta-item">
+          <dt>Card #</dt>
+          <dd id="modalCardNumber">—</dd>
+        </div>
+        <div class="meta-item">
+          <dt>Features</dt>
+          <dd id="modalFeatures">—</dd>
+        </div>
+        <div class="meta-item">
+          <dt>Season</dt>
+          <dd id="modalSeason">—</dd>
+        </div>
+        <div class="meta-item">
+          <dt>Brand</dt>
+          <dd id="modalBrand">—</dd>
+        </div>
+        <div class="meta-item">
+          <dt>Condition</dt>
+          <dd id="modalCondition">—</dd>
+        </div>
+      </dl>
+
+      <div class="modal-actions">
+        <button class="btn btn-primary" id="copyTitleBtn" type="button">Copy eBay Title</button>
+        <button class="btn btn-secondary" id="copyDescBtn" type="button">Copy eBay Description (HTML)</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="modal-preview">
+        <div class="preview-label">Card Name</div>
+        <div class="preview-value" id="modalCardName">—</div>
+      </div>
+
+      <div class="modal-images" id="modalImages">
+        <!-- optional: JS can inject images -->
+      </div>
+    </div>
+  </aside>
+
+  <!-- Toast -->
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden>
+    <span class="toast-dot" aria-hidden="true"></span>
+    <span id="toastText">Copied</span>
+  </div>
+
+  <script src="./app.js"></script>
+
+  <!-- tiny UX glue that won't fight app.js -->
+  <script>
+    // Non-invasive helpers: clear search button + empty-state clear button.
+    (function () {
+      const $ = (id) => document.getElementById(id);
+
+      const search = $("searchInput");
+      const clear = $("clearSearch");
+      const emptyClear = $("emptyClear");
+      const clearFilters = $("clearFilters");
+
+      function updateClearBtn() {
+        clear.style.visibility = search.value ? "visible" : "hidden";
+      }
+
+      if (search && clear) {
+        updateClearBtn();
+        search.addEventListener("input", updateClearBtn);
+        clear.addEventListener("click", () => {
+          search.value = "";
+          search.dispatchEvent(new Event("input", { bubbles: true }));
+          search.focus();
+          updateClearBtn();
+        });
+      }
+
+      if (emptyClear && clearFilters) {
+        emptyClear.addEventListener("click", () => clearFilters.click());
+      }
+    })();
+  </script>
+</body>
 </html>
 
